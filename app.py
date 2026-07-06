@@ -1,5 +1,4 @@
 import io
-import base64
 from pathlib import Path
 
 import pandas as pd
@@ -88,7 +87,6 @@ def render_preview_html(df, title, subtitle, time_text):
     for _, r in preview.iterrows():
         seats.append(f"""
         <div class='seat'>
-          <div class='chair'>🪑</div>
           <div class='seatno'>{r['seat_no']}</div>
           <div class='code'>{r['code']}</div>
         </div>
@@ -150,21 +148,16 @@ def create_document(event_meta, df):
         for r in range(3):
             seat_table.cell(r, i).width = Inches(cell_width)
             seat_table.cell(r, i).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        icon = seat_table.cell(0, i)
         num = seat_table.cell(1, i)
         code = seat_table.cell(2, i)
-        icon.text = "🪑"
         num.text = str(row["seat_no"])
         code.text = str(row["code"])
-        style_paragraph(icon.paragraphs[0], size=14, align=WD_ALIGN_PARAGRAPH.CENTER)
         style_paragraph(num.paragraphs[0], bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
         style_paragraph(code.paragraphs[0], bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
         set_cell_shading(num, "F5EFD6")
         set_cell_shading(code, "F5EFD6")
-        set_cell_border(icon, size="4")
         set_cell_border(num, size="6")
         set_cell_border(code, size="6")
-        set_cell_margins(icon, 40, 40, 40, 40)
         set_cell_margins(num, 40, 40, 40, 40)
         set_cell_margins(code, 40, 40, 40, 40)
 
@@ -219,7 +212,6 @@ st.markdown(
 .seatrow{display:flex;flex-wrap:wrap;gap:10px;padding:12px 8px 8px;border:1px solid #e5e5e5;border-radius:14px;background:#fcfcfc;align-items:flex-end;min-height:130px}
 .seatrow.no-wrap{flex-wrap:nowrap;overflow-x:auto}
 .seat{min-width:88px;text-align:center;border:1px solid #d8d8d8;border-radius:14px;padding:10px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.chair{font-size:30px;line-height:1.1;margin-bottom:4px}
 .seatno{font-weight:700;font-size:18px;line-height:1.1;font-family:Arial, sans-serif}
 .code{font-size:11px;color:#666;margin-top:2px;font-family:Arial, sans-serif}
 </style>
@@ -236,7 +228,6 @@ with st.sidebar:
     subtitle = st.text_input("Subtitle / Venue", "")
     time_text = st.text_input("Date / Time line", "")
     logo = st.file_uploader("Upload logo", type=["png", "jpg", "jpeg", "webp"])
-    show_icons = st.toggle("Show chair icons in preview", value=True)
     wrap_preview = st.toggle("Wrap preview rows", value=True)
     if logo is not None:
         st.image(logo, use_container_width=True)
@@ -279,18 +270,11 @@ else:
 
 st.subheader("Live preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
-if show_icons:
-    preview_html = render_preview_html(preview_data, title, subtitle, time_text)
-    if wrap_preview:
-        st.markdown(preview_html, unsafe_allow_html=True)
-    else:
-        st.markdown(preview_html.replace("seatrow", "seatrow no-wrap"), unsafe_allow_html=True)
+preview_html = render_preview_html(preview_data, title, subtitle, time_text)
+if wrap_preview:
+    st.markdown(preview_html, unsafe_allow_html=True)
 else:
-    cols = st.columns(min(len(preview_data), 12) or 1)
-    for i, row in preview_data.iterrows():
-        with cols[i % len(cols)]:
-            st.markdown(f"**{row['seat_no']}**")
-            st.caption(str(row["code"]))
+    st.markdown(preview_html.replace("seatrow", "seatrow no-wrap"), unsafe_allow_html=True)
 
 st.markdown("### Current seat order")
 order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
