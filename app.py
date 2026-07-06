@@ -81,28 +81,6 @@ def set_landscape(doc):
     section.right_margin = Inches(0.35)
 
 
-def render_preview_html(df, title, subtitle, time_text):
-    preview = df.sort_values("display_order").reset_index(drop=True)
-    seats = []
-    for _, r in preview.iterrows():
-        seats.append(f"""
-        <div class='seat'>
-          <div class='seatno'>{r['seat_no']}</div>
-          <div class='code'>{r['code']}</div>
-        </div>
-        """)
-    head = f"""
-    <div class='sheet-head'>
-      <div class='sheet-head-left'>{title}</div>
-      <div class='sheet-head-right'>
-        <div>{subtitle}</div>
-        <div>{time_text}</div>
-      </div>
-    </div>
-    """
-    return head + "<div class='seatrow'>" + "".join(seats) + "</div>"
-
-
 def create_document(event_meta, df):
     doc = Document()
     set_landscape(doc)
@@ -206,14 +184,10 @@ def sample_df():
 st.markdown(
     """
 <style>
-.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;margin:4px 0 10px 0;padding:6px 2px}
-.sheet-head-left{font-size:18px;font-weight:700;color:#0a72b8;text-align:left;max-width:58%}
-.sheet-head-right{font-size:13px;color:#666;text-align:right;line-height:1.5}
-.seatrow{display:flex;flex-wrap:wrap;gap:10px;padding:12px 8px 8px;border:1px solid #e5e5e5;border-radius:14px;background:#fcfcfc;align-items:flex-end;min-height:130px}
-.seatrow.no-wrap{flex-wrap:nowrap;overflow-x:auto}
-.seat{min-width:88px;text-align:center;border:1px solid #d8d8d8;border-radius:14px;padding:10px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center}
 .seatno{font-weight:700;font-size:18px;line-height:1.1;font-family:Arial, sans-serif}
 .code{font-size:11px;color:#666;margin-top:2px;font-family:Arial, sans-serif}
+.page-shell{border:1px solid #ddd;border-radius:12px;padding:12px;background:#fff}
 </style>
 """,
     unsafe_allow_html=True,
@@ -228,7 +202,6 @@ with st.sidebar:
     subtitle = st.text_input("Subtitle / Venue", "")
     time_text = st.text_input("Date / Time line", "")
     logo = st.file_uploader("Upload logo", type=["png", "jpg", "jpeg", "webp"])
-    wrap_preview = st.toggle("Wrap preview rows", value=True)
     if logo is not None:
         st.image(logo, use_container_width=True)
 
@@ -270,11 +243,25 @@ else:
 
 st.subheader("Word preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
-preview_html = render_preview_html(preview_data, title, subtitle, time_text)
-if wrap_preview:
-    st.markdown(preview_html, unsafe_allow_html=True)
-else:
-    st.markdown(preview_html.replace("seatrow", "seatrow no-wrap"), unsafe_allow_html=True)
+
+top_left, top_right = st.columns([2, 1])
+with top_left:
+    if logo is not None:
+        st.image(logo, width=160)
+with top_right:
+    st.markdown(f"**{title}**")
+    if subtitle:
+        st.caption(subtitle)
+    if time_text:
+        st.caption(time_text)
+
+seat_cols = st.columns(min(len(preview_data), 12) or 1)
+for i, row in preview_data.iterrows():
+    with seat_cols[i % len(seat_cols)]:
+        st.markdown(
+            f"<div class='seat-card'><div class='seatno'>{row['seat_no']}</div><div class='code'>{row['code']}</div></div>",
+            unsafe_allow_html=True,
+        )
 
 st.markdown("### Current seat order")
 order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
