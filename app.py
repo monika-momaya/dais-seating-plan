@@ -220,7 +220,7 @@ st.markdown(
 )
 
 st.title("Free Seating Plan Generator")
-st.caption("Live preview + Word export using only free open-source libraries.")
+st.caption("Word-style preview + export using only free open-source libraries.")
 
 with st.sidebar:
     st.header("Event details")
@@ -250,7 +250,7 @@ if missing:
 st.subheader("Edit data")
 edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
 
-st.subheader("Seat ordering")
+st.subheader("Reorder seats")
 seat_labels = [f"{r.seat_no} · {r.code} · {r.name}" for r in edited.sort_values("display_order").itertuples(index=False)]
 if sort_items is not None:
     reordered = sort_items(seat_labels, direction="horizontal")
@@ -261,14 +261,14 @@ if sort_items is not None:
             lambda r: order_map.get(f"{r.seat_no} · {r.code} · {r.name}", r.display_order),
             axis=1,
         )
-        st.success("Seat order updated by drag and drop.")
+        st.success("Preview order updated by drag and drop.")
     else:
-        st.info("Drag items to reorder the dais sequence.")
+        st.info("Drag the seat cards to change the preview order.")
 else:
-    st.info("Install streamlit-sortables to enable drag and drop reordering. Using display_order fallback.")
-    st.caption("You can drag to reorder if the component is installed; otherwise edit display_order.")
+    st.info("Install streamlit-sortables to enable drag and drop reordering.")
+    st.caption("Without the component, edit display_order manually.")
 
-st.subheader("Live preview")
+st.subheader("Word preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
 preview_html = render_preview_html(preview_data, title, subtitle, time_text)
 if wrap_preview:
