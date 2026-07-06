@@ -1,35 +1,47 @@
 # Seating Plan Generator
 
-This is a completely free Streamlit app for generating landscape Word seating plans.
+Free Streamlit app for seating-plan previews and Word export.
 
-## Free stack
-- Streamlit
-- pandas
-- openpyxl
-- python-docx
+## Free features
+- Live preview
+- Chair-style layout
+- Landscape DOCX export
+- CSV/XLSX input
+- Optional logo upload
 
-## Features
-- Upload CSV or XLSX
-- Edit dignitary list in browser
-- Control dais display order separately from serial number
-- Export landscape `.docx`
-- No paid plugin or paid API required
-
-## Required columns
-- `serial_no`
-- `seat_no`
-- `display_order`
-- `code`
-- `name`
-- `designation`
-
-## Run locally
+## Run
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Notes
-- This version uses only free open-source libraries.
-- You can deploy it free on Streamlit Community Cloud if the app size and usage fit their free limits.
-- You can also run it on your own machine at zero software cost.
+## Next upgrade
+Add a free draggable seat-order component for direct reordering in the UI.
+
+## Draggable ordering
+- Recommended free options: streamlit-sortables or streamlit-draggable-list.
+- They are open-source and support browser-side reordering for seat order.
+- We can wire one into the app state next.
+
+## Drag and drop
+- The app now supports free drag-and-drop ordering through streamlit-sortables when installed.
+- If the component is unavailable, the app falls back to display_order.
+
+## Preview polish
+- Preview can wrap to multiple rows or stay in one row.
+- Longer names still export cleanly in DOCX with smaller table font.
+
+## Header and branding
+- The exported DOCX now supports a two-column top header block with logo on the left and text on the right.
+- The preview mirrors that branding direction for consistency.
+
+## Borders, spacing, typography
+- Borders are the thin lines around each box/cell in the Word table.
+- Spacing means the padding inside those boxes and the gaps between the seat row and the detail table.
+- Typography means font family, size, weight, and alignment.
+
+## Latest package
+- Free Streamlit app with live chair preview.
+- Optional drag-and-drop ordering via streamlit-sortables.
+- Landscape Word export with logo, header, borders, and spacing controls.
+- No paid plugin required.
