@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -59,8 +60,16 @@ def set_cell_margins(cell, top=60, start=60, bottom=60, end=60):
         node.set(qn("w:type"), "dxa")
 
 
+def set_paragraph_single_spacing(paragraph):
+    fmt = paragraph.paragraph_format
+    fmt.line_spacing = 1
+    fmt.space_before = Pt(0)
+    fmt.space_after = Pt(0)
+
+
 def style_paragraph(paragraph, bold=False, size=10, align=WD_ALIGN_PARAGRAPH.LEFT, color=None):
     paragraph.alignment = align
+    set_paragraph_single_spacing(paragraph)
     if not paragraph.runs:
         paragraph.add_run("")
     for run in paragraph.runs:
@@ -79,6 +88,36 @@ def set_landscape(doc):
     section.bottom_margin = Inches(0.35)
     section.left_margin = Inches(0.35)
     section.right_margin = Inches(0.35)
+
+
+def history_path():
+    return Path("output/seating-plan-app/history.json")
+
+
+def load_history():
+    if "history" not in st.session_state:
+        st.session_state["history"] = []
+    if not st.session_state["history"] and history_path().exists():
+        try:
+            st.session_state["history"] = json.loads(history_path().read_text())
+        except Exception:
+            st.session_state["history"] = []
+
+
+def save_current_history(title, subtitle, time_text, df):
+    load_history()
+    record = {
+        "title": title,
+        "subtitle": subtitle,
+        "time_text": time_text,
+        "rows": df.to_dict(orient="records"),
+    }
+    hist = st.session_state.get("history", [])
+    hist.insert(0, record)
+    limit = int(st.session_state.get("history_limit", 5))
+    hist = hist[:limit]
+    st.session_state["history"] = hist
+    history_path().write_text(json.dumps(hist, indent=2, default=str))
 
 
 def create_document(event_meta, df):
@@ -107,6 +146,7 @@ def create_document(event_meta, df):
     run.font.size = Pt(16)
     run.font.color.rgb = RGBColor(0, 102, 153)
     title.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    set_paragraph_single_spacing(title)
 
     for key in ["subtitle", "time_text"]:
         if event_meta.get(key):
@@ -140,28 +180,35 @@ def create_document(event_meta, df):
         set_cell_margins(code, 40, 40, 40, 40)
 
     doc.add_paragraph("")
-    detail_table = doc.add_table(rows=1, cols=3)
-    detail_table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    detail_table = doc.add_table(rows=1, cols=4)
+    detail_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     detail_table.autofit = False
-    headers = ["Sr. No.", "Code", "Dignitaries on Dais"]
-    widths = [0.7, 0.8, 8.9]
+    headers = ["Display", "Seating", "Code", "Name / Title"]
+    widths = [0.9, 1.1, 0.9, 7.3]
 
     for i, text in enumerate(headers):
         cell = detail_table.rows[0].cells[i]
         cell.width = Inches(widths[i])
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         cell.text = text
-        style_paragraph(cell.paragraphs[0], bold=True, size=9)
+        style_paragraph(cell.paragraphs[0], bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER)
         set_cell_shading(cell, "DDDDDD")
         set_cell_border(cell, size="6")
         set_cell_margins(cell, 50, 60, 50, 60)
 
-    for _, row in df.sort_values("serial_no").iterrows():
+    for _, row in df.iterrows():
         cells = detail_table.add_row().cells
-        values = [row["serial_no"], row["code"], f"{row['name']}, {row['designation']}"]
+        values = [row["seat_no"], row["seat_no"], row["code"], row["name"]]
         for i, value in enumerate(values):
             cells[i].width = Inches(widths[i])
+            cells[i].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             cells[i].text = str(value)
-            style_paragraph(cells[i].paragraphs[0], bold=(i < 2), size=9)
+            style_paragraph(
+                cells[i].paragraphs[0],
+                bold=(i < 3),
+                size=9,
+                align=WD_ALIGN_PARAGRAPH.CENTER if i < 3 else WD_ALIGN_PARAGRAPH.LEFT,
+            )
             set_cell_border(cells[i], size="6")
             set_cell_margins(cells[i], 40, 60, 40, 60)
 
@@ -181,15 +228,6 @@ def sample_df():
     ])
 
 
-st.markdown(
-    """
-<style>
-.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
 st.title("Free Seating Plan Generator")
 st.caption("Word-style preview + export using only free open-source libraries.")
 
@@ -198,9 +236,13 @@ with st.sidebar:
     title = st.text_input("Title", "INAUGURAL SEATING PLAN (TENTATIVE)")
     subtitle = st.text_input("Subtitle / Venue", "")
     time_text = st.text_input("Date / Time line", "")
+    history_limit = st.selectbox("Store last histories", [5, 10], index=0)
+    st.session_state["history_limit"] = history_limit
     logo = st.file_uploader("Upload logo", type=["png", "jpg", "jpeg", "webp"])
     if logo is not None:
         st.image(logo, use_container_width=True)
+
+load_history()
 
 uploaded = st.file_uploader("Upload CSV or XLSX", type=["csv", "xlsx"])
 if uploaded:
@@ -264,10 +306,25 @@ st.markdown("### Current seat order")
 order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
 st.dataframe(order_df, use_container_width=True, hide_index=True)
 
+st.markdown("### Recent histories")
+if st.session_state.get("history"):
+    for idx, item in enumerate(st.session_state["history"][:st.session_state.get("history_limit", 5)]):
+        label = f"{idx+1}. {item.get('title', '')}"
+        with st.expander(label, expanded=(idx == 0)):
+            st.write(item.get("subtitle", ""))
+            st.write(item.get("time_text", ""))
+            hist_df = pd.DataFrame(item.get("rows", []))
+            if not hist_df.empty:
+                st.dataframe(hist_df, use_container_width=True, hide_index=True)
+else:
+    st.caption("No saved history yet.")
+
 logo_path = None
 if logo is not None:
     logo_path = f"output/seating-plan-app/{logo.name}"
     Path(logo_path).write_bytes(logo.getbuffer())
+
+save_current_history(title, subtitle, time_text, edited.sort_values("display_order"))
 
 out = create_document(
     {"title": title, "subtitle": subtitle, "time_text": time_text, "logo_path": logo_path},
