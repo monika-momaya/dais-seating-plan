@@ -91,21 +91,24 @@ def set_landscape(doc):
 
 
 def history_path():
-    return Path("output/seating-plan-app/history.json")
+    path = Path("output/seating-plan-app/history.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def load_history():
     if "history" not in st.session_state:
         st.session_state["history"] = []
-    if not st.session_state["history"] and history_path().exists():
+    p = history_path()
+    if p.exists() and not st.session_state["history"]:
         try:
-            st.session_state["history"] = json.loads(history_path().read_text())
+            st.session_state["history"] = json.loads(p.read_text())
         except Exception:
             st.session_state["history"] = []
 
 
 def save_current_history(title, subtitle, time_text, df):
-    load_history()
+    path = history_path()
     record = {
         "title": title,
         "subtitle": subtitle,
@@ -117,7 +120,7 @@ def save_current_history(title, subtitle, time_text, df):
     limit = int(st.session_state.get("history_limit", 5))
     hist = hist[:limit]
     st.session_state["history"] = hist
-    history_path().write_text(json.dumps(hist, indent=2, default=str))
+    path.write_text(json.dumps(hist, indent=2, default=str))
 
 
 def create_document(event_meta, df):
@@ -228,6 +231,15 @@ def sample_df():
     ])
 
 
+st.markdown(
+    """
+<style>
+.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 st.title("Free Seating Plan Generator")
 st.caption("Word-style preview + export using only free open-source libraries.")
 
@@ -236,9 +248,9 @@ with st.sidebar:
     title = st.text_input("Title", "INAUGURAL SEATING PLAN (TENTATIVE)")
     subtitle = st.text_input("Subtitle / Venue", "")
     time_text = st.text_input("Date / Time line", "")
+    logo = st.file_uploader("Upload logo", type=["png", "jpg", "jpeg", "webp"])
     history_limit = st.selectbox("Store last histories", [5, 10], index=0)
     st.session_state["history_limit"] = history_limit
-    logo = st.file_uploader("Upload logo", type=["png", "jpg", "jpeg", "webp"])
     if logo is not None:
         st.image(logo, use_container_width=True)
 
