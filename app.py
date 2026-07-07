@@ -184,10 +184,7 @@ def sample_df():
 st.markdown(
     """
 <style>
-.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center}
-.seatno{font-weight:700;font-size:18px;line-height:1.1;font-family:Arial, sans-serif}
-.code{font-size:11px;color:#666;margin-top:2px;font-family:Arial, sans-serif}
-.page-shell{border:1px solid #ddd;border-radius:12px;padding:12px;background:#fff}
+.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}
 </style>
 """,
     unsafe_allow_html=True,
@@ -244,22 +241,22 @@ else:
 st.subheader("Word preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
 
-top_left, top_right = st.columns([2, 1])
-with top_left:
+left, right = st.columns([1, 2])
+with left:
     if logo is not None:
         st.image(logo, width=160)
-with top_right:
-    st.markdown(f"**{title}**")
+with right:
+    st.markdown(f"### {title}")
     if subtitle:
-        st.caption(subtitle)
+        st.write(subtitle)
     if time_text:
-        st.caption(time_text)
+        st.write(time_text)
 
 seat_cols = st.columns(min(len(preview_data), 12) or 1)
 for i, row in preview_data.iterrows():
     with seat_cols[i % len(seat_cols)]:
         st.markdown(
-            f"<div class='seat-card'><div class='seatno'>{row['seat_no']}</div><div class='code'>{row['code']}</div></div>",
+            f"<div class='seat-card'><div style='font-size:24px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:16px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>",
             unsafe_allow_html=True,
         )
 

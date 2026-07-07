@@ -3,8 +3,7 @@
 Free Streamlit app for seating-plan previews and Word export.
 
 ## Free features
-- Live preview
-- Chair-style layout
+- Word-style preview
 - Landscape DOCX export
 - CSV/XLSX input
 - Optional logo upload
