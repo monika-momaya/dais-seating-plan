@@ -1,13 +1,13 @@
 # Seating Plan Generator
 
-Free Streamlit app for seating-plan previews and Word export.
+Free Streamlit app for generating a print-style dais seating plan and Word export.
 
-## Free features
-- Word-style preview
-- Landscape DOCX export
-- CSV/XLSX input
-- Optional logo upload
-- Drag-and-drop ordering
+## Features
+- Top logo/title layout
+- Dais seat grid
+- Lower dignitary table in uploaded order
+- Single spacing in DOCX output
+- Optional drag-and-drop ordering
 - Recent histories (last 5 or 10)
 
 ## Run
