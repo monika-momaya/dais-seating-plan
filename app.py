@@ -21,6 +21,36 @@ from docx.shared import Inches, Pt, RGBColor
 st.set_page_config(page_title="Seating Plan Generator", layout="wide")
 
 
+def set_paragraph_single_spacing(paragraph):
+    fmt = paragraph.paragraph_format
+    fmt.line_spacing = 1
+    fmt.space_before = Pt(0)
+    fmt.space_after = Pt(0)
+
+
+def style_paragraph(paragraph, bold=False, size=10, align=WD_ALIGN_PARAGRAPH.LEFT, color=None):
+    paragraph.alignment = align
+    set_paragraph_single_spacing(paragraph)
+    if not paragraph.runs:
+        paragraph.add_run("")
+    for run in paragraph.runs:
+        run.font.name = "Arial"
+        run.font.size = Pt(size)
+        run.bold = bold
+        if color:
+            run.font.color.rgb = RGBColor.from_string(color)
+
+
+def set_landscape(doc):
+    section = doc.sections[0]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    section.page_width, section.page_height = section.page_height, section.page_width
+    section.top_margin = Inches(0.35)
+    section.bottom_margin = Inches(0.35)
+    section.left_margin = Inches(0.35)
+    section.right_margin = Inches(0.35)
+
+
 def set_cell_shading(cell, fill):
     tc_pr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
@@ -60,36 +90,6 @@ def set_cell_margins(cell, top=60, start=60, bottom=60, end=60):
         node.set(qn("w:type"), "dxa")
 
 
-def set_paragraph_single_spacing(paragraph):
-    fmt = paragraph.paragraph_format
-    fmt.line_spacing = 1
-    fmt.space_before = Pt(0)
-    fmt.space_after = Pt(0)
-
-
-def style_paragraph(paragraph, bold=False, size=10, align=WD_ALIGN_PARAGRAPH.LEFT, color=None):
-    paragraph.alignment = align
-    set_paragraph_single_spacing(paragraph)
-    if not paragraph.runs:
-        paragraph.add_run("")
-    for run in paragraph.runs:
-        run.font.name = "Arial"
-        run.font.size = Pt(size)
-        run.bold = bold
-        if color:
-            run.font.color.rgb = RGBColor.from_string(color)
-
-
-def set_landscape(doc):
-    section = doc.sections[0]
-    section.orientation = WD_ORIENT.LANDSCAPE
-    section.page_width, section.page_height = section.page_height, section.page_width
-    section.top_margin = Inches(0.35)
-    section.bottom_margin = Inches(0.35)
-    section.left_margin = Inches(0.35)
-    section.right_margin = Inches(0.35)
-
-
 def history_path():
     path = Path("output/seating-plan-app/history.json")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,18 +109,12 @@ def load_history():
 
 def save_current_history(title, subtitle, time_text, df):
     path = history_path()
-    record = {
-        "title": title,
-        "subtitle": subtitle,
-        "time_text": time_text,
-        "rows": df.to_dict(orient="records"),
-    }
+    record = {"title": title, "subtitle": subtitle, "time_text": time_text, "rows": df.to_dict(orient="records")}
     hist = st.session_state.get("history", [])
     hist.insert(0, record)
     limit = int(st.session_state.get("history_limit", 5))
-    hist = hist[:limit]
-    st.session_state["history"] = hist
-    path.write_text(json.dumps(hist, indent=2, default=str))
+    st.session_state["history"] = hist[:limit]
+    path.write_text(json.dumps(st.session_state["history"], indent=2, default=str))
 
 
 def create_document(event_meta, df):
@@ -133,11 +127,10 @@ def create_document(event_meta, df):
     top.cell(0, 0).width = Inches(2.2)
     top.cell(0, 1).width = Inches(8.8)
 
-    if event_meta.get("logo_path"):
+    if event_meta.get("logo_path") and Path(event_meta["logo_path"]).exists():
         p = top.cell(0, 0).paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        run = p.add_run()
-        run.add_picture(event_meta["logo_path"], width=Inches(1.3))
+        p.add_run().add_picture(event_meta["logo_path"], width=Inches(1.3))
     else:
         top.cell(0, 0).text = ""
 
@@ -158,12 +151,10 @@ def create_document(event_meta, df):
 
     doc.add_paragraph("")
     seat_df = df.sort_values("display_order").reset_index(drop=True)
-    seat_count = max(len(seat_df), 1)
-    seat_table = doc.add_table(rows=3, cols=seat_count)
+    seat_table = doc.add_table(rows=3, cols=max(len(seat_df), 1))
     seat_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     seat_table.autofit = False
-    usable_width = 10.5
-    cell_width = usable_width / seat_count
+    cell_width = 10.5 / max(len(seat_df), 1)
 
     for i, row in seat_df.iterrows():
         for r in range(3):
@@ -189,11 +180,11 @@ def create_document(event_meta, df):
     headers = ["Display", "Seating", "Code", "Name / Title"]
     widths = [0.9, 1.1, 0.9, 7.3]
 
-    for i, text in enumerate(headers):
+    for i, hdr in enumerate(headers):
         cell = detail_table.rows[0].cells[i]
         cell.width = Inches(widths[i])
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        cell.text = text
+        cell.text = hdr
         style_paragraph(cell.paragraphs[0], bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER)
         set_cell_shading(cell, "DDDDDD")
         set_cell_border(cell, size="6")
@@ -231,14 +222,7 @@ def sample_df():
     ])
 
 
-st.markdown(
-    """
-<style>
-.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+st.markdown("<style>.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}</style>", unsafe_allow_html=True)
 
 st.title("Free Seating Plan Generator")
 st.caption("Word-style preview + export using only free open-source libraries.")
@@ -258,10 +242,7 @@ load_history()
 
 uploaded = st.file_uploader("Upload CSV or XLSX", type=["csv", "xlsx"])
 if uploaded:
-    if uploaded.name.lower().endswith(".csv"):
-        df = pd.read_csv(uploaded)
-    else:
-        df = pd.read_excel(uploaded)
+    df = pd.read_csv(uploaded) if uploaded.name.lower().endswith(".csv") else pd.read_excel(uploaded)
 else:
     df = sample_df()
 
@@ -281,10 +262,7 @@ if sort_items is not None:
     if reordered:
         order_map = {label: i + 1 for i, label in enumerate(reordered)}
         edited = edited.copy()
-        edited["display_order"] = edited.apply(
-            lambda r: order_map.get(f"{r.seat_no} · {r.code} · {r.name}", r.display_order),
-            axis=1,
-        )
+        edited["display_order"] = edited.apply(lambda r: order_map.get(f"{r.seat_no} · {r.code} · {r.name}", r.display_order), axis=1)
         st.success("Preview order updated by drag and drop.")
     else:
         st.info("Drag the seat cards to change the preview order.")
@@ -294,7 +272,6 @@ else:
 
 st.subheader("Word preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
-
 left, right = st.columns([1, 2])
 with left:
     if logo is not None:
@@ -309,10 +286,7 @@ with right:
 seat_cols = st.columns(min(len(preview_data), 12) or 1)
 for i, row in preview_data.iterrows():
     with seat_cols[i % len(seat_cols)]:
-        st.markdown(
-            f"<div class='seat-card'><div style='font-size:24px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:16px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"<div class='seat-card'><div style='font-size:24px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:16px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
 
 st.markdown("### Current seat order")
 order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
@@ -321,8 +295,7 @@ st.dataframe(order_df, use_container_width=True, hide_index=True)
 st.markdown("### Recent histories")
 if st.session_state.get("history"):
     for idx, item in enumerate(st.session_state["history"][:st.session_state.get("history_limit", 5)]):
-        label = f"{idx+1}. {item.get('title', '')}"
-        with st.expander(label, expanded=(idx == 0)):
+        with st.expander(f"{idx+1}. {item.get('title', '')}", expanded=(idx == 0)):
             st.write(item.get("subtitle", ""))
             st.write(item.get("time_text", ""))
             hist_df = pd.DataFrame(item.get("rows", []))
@@ -338,21 +311,7 @@ if logo is not None:
 
 save_current_history(title, subtitle, time_text, edited.sort_values("display_order"))
 
-out = create_document(
-    {"title": title, "subtitle": subtitle, "time_text": time_text, "logo_path": logo_path},
-    edited.sort_values("display_order"),
-)
+out = create_document({"title": title, "subtitle": subtitle, "time_text": time_text, "logo_path": logo_path}, edited.sort_values("display_order"))
 
-st.download_button(
-    "Download Word document",
-    data=out.getvalue(),
-    file_name="seating-plan.docx",
-    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-)
-
-st.download_button(
-    "Download CSV template",
-    data=edited.to_csv(index=False).encode("utf-8"),
-    file_name="seating-plan.csv",
-    mime="text/csv",
-)
+st.download_button("Download Word document", data=out.getvalue(), file_name="seating-plan.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+st.download_button("Download CSV template", data=edited.to_csv(index=False).encode("utf-8"), file_name="seating-plan.csv", mime="text/csv")
