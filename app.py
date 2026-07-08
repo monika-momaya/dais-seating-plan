@@ -174,37 +174,32 @@ def create_document(event_meta, df):
         set_cell_margins(code, 40, 40, 40, 40)
 
     doc.add_paragraph("")
-    detail_table = doc.add_table(rows=1, cols=4)
+    detail_table = doc.add_table(rows=1, cols=3)
     detail_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     detail_table.autofit = False
-    headers = ["Display", "Seating", "Code", "Name / Title"]
-    widths = [0.9, 1.1, 0.9, 7.3]
+    headers = ["Sr. No.", "Code", "Inaugural Dignitaries on Dais:"]
+    widths = [0.7, 0.8, 8.9]
 
     for i, hdr in enumerate(headers):
         cell = detail_table.rows[0].cells[i]
         cell.width = Inches(widths[i])
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         cell.text = hdr
-        style_paragraph(cell.paragraphs[0], bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER)
+        style_paragraph(cell.paragraphs[0], bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER if i < 2 else WD_ALIGN_PARAGRAPH.LEFT)
         set_cell_shading(cell, "DDDDDD")
         set_cell_border(cell, size="6")
         set_cell_margins(cell, 50, 60, 50, 60)
 
     for _, row in df.iterrows():
         cells = detail_table.add_row().cells
-        values = [row["seat_no"], row["seat_no"], row["code"], row["name"]]
+        values = [row["serial_no"], row["code"], row["name"]]
         for i, value in enumerate(values):
             cells[i].width = Inches(widths[i])
             cells[i].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             cells[i].text = str(value)
-            style_paragraph(
-                cells[i].paragraphs[0],
-                bold=(i < 3),
-                size=9,
-                align=WD_ALIGN_PARAGRAPH.CENTER if i < 3 else WD_ALIGN_PARAGRAPH.LEFT,
-            )
+            style_paragraph(cells[i].paragraphs[0], bold=(i < 2), size=9, align=WD_ALIGN_PARAGRAPH.CENTER if i < 2 else WD_ALIGN_PARAGRAPH.LEFT)
             set_cell_border(cells[i], size="6")
-            set_cell_margins(cells[i], 40, 60, 40, 60)
+            set_cell_margins(cells[i], 40, 60, 40, 40)
 
     bio = io.BytesIO()
     doc.save(bio)
