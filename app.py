@@ -117,6 +117,46 @@ def save_current_history(title, subtitle, time_text, df):
     path.write_text(json.dumps(st.session_state["history"], indent=2, default=str))
 
 
+def compute_auto_display_order(n):
+    """Return mapping protocol_rank -> display_order (1..n, left to right).
+    Rank 1 sits right-middle, rank 2 sits left-middle, then alternate outward:
+    odd ranks (3,5,7,...) extend the right side, even ranks (4,6,8,...) extend the left side.
+    For odd n, rank 1 ends up as the exact center seat.
+    """
+    left = []
+    right = []
+    for k in range(1, n + 1):
+        if k == 1:
+            right.append(k)
+        elif k == 2:
+            left.append(k)
+        elif k % 2 == 1:
+            right.append(k)
+        else:
+            left.append(k)
+    left_to_right_positions = list(reversed(left)) + right
+    mapping = {rank: pos + 1 for pos, rank in enumerate(left_to_right_positions)}
+    return mapping
+
+
+def parse_pasted_names(text):
+    rows = []
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for i, line in enumerate(lines, start=1):
+        parts = [p.strip() for p in line.split("|")]
+        name = parts[0] if len(parts) > 0 else ""
+        designation = parts[1] if len(parts) > 1 else ""
+        code = parts[2] if len(parts) > 2 else "".join([w[0].upper() for w in name.split()[:3] if w])
+        rows.append({"serial_no": i, "code": code, "name": name, "designation": designation})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    order_map = compute_auto_display_order(len(df))
+    df["seat_no"] = df["serial_no"]
+    df["display_order"] = df["serial_no"].map(order_map)
+    return df
+
+
 def create_document(event_meta, df):
     doc = Document()
     set_landscape(doc)
@@ -190,7 +230,7 @@ def create_document(event_meta, df):
         set_cell_border(cell, size="6")
         set_cell_margins(cell, 50, 60, 50, 60)
 
-    for _, row in df.iterrows():
+    for _, row in df.sort_values("serial_no").iterrows():
         cells = detail_table.add_row().cells
         values = [row["serial_no"], row["code"], row["name"]]
         for i, value in enumerate(values):
@@ -199,7 +239,7 @@ def create_document(event_meta, df):
             cells[i].text = str(value)
             style_paragraph(cells[i].paragraphs[0], bold=(i < 2), size=9, align=WD_ALIGN_PARAGRAPH.CENTER if i < 2 else WD_ALIGN_PARAGRAPH.LEFT)
             set_cell_border(cells[i], size="6")
-            set_cell_margins(cells[i], 40, 60, 40, 40)
+            set_cell_margins(cells[i], 40, 60, 40, 60)
 
     bio = io.BytesIO()
     doc.save(bio)
@@ -207,20 +247,18 @@ def create_document(event_meta, df):
     return bio
 
 
-def sample_df():
-    return pd.DataFrame([
-        {"serial_no": 1, "seat_no": 1, "display_order": 3, "code": "CM", "name": "Shri Example Person", "designation": "Chief Guest"},
-        {"serial_no": 2, "seat_no": 2, "display_order": 1, "code": "NG", "name": "Shri Second Person", "designation": "Guest of Honour"},
-        {"serial_no": 3, "seat_no": 3, "display_order": 4, "code": "GS", "name": "Shri Third Person", "designation": "Minister"},
-        {"serial_no": 4, "seat_no": 4, "display_order": 2, "code": "DCM", "name": "Shri Fourth Person", "designation": "Deputy Chief Minister"},
-        {"serial_no": 5, "seat_no": 5, "display_order": 5, "code": "PB", "name": "Shri Fifth Person", "designation": "Minister"},
-    ])
+def sample_text():
+    return "Shri Bhupendrabhai Patel | Hon'ble Chief Minister, Government of Gujarat | CM\n" \
+           "Shri Nitin Gadkari | Hon'ble Minister of Road Transport and Highways, Government of India | NG\n" \
+           "Shri Harsh Sanghavi | Hon'ble Deputy Chief Minister, Government of Gujarat | DCM\n" \
+           "Shri Pradeep Batra | Hon'ble Transport Minister, Government of Uttarakhand | PB\n" \
+           "Shri Arjun Singh | Hon'ble Minister for Transport and Labour, Government of West Bengal | AS"
 
 
 st.markdown("<style>.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}</style>", unsafe_allow_html=True)
 
 st.title("Free Seating Plan Generator")
-st.caption("Word-style preview + export using only free open-source libraries.")
+st.caption("Paste dignitary names in protocol order. Seating is auto-generated, with manual override available.")
 
 with st.sidebar:
     st.header("Event details")
@@ -235,22 +273,19 @@ with st.sidebar:
 
 load_history()
 
-uploaded = st.file_uploader("Upload CSV or XLSX", type=["csv", "xlsx"])
-if uploaded:
-    df = pd.read_csv(uploaded) if uploaded.name.lower().endswith(".csv") else pd.read_excel(uploaded)
-else:
-    df = sample_df()
+st.subheader("Paste dignitary names (in protocol order, one per line)")
+st.caption("Format: Name | Designation | Code (Designation and Code are optional)")
+pasted = st.text_area("Dignitary list", value=sample_text(), height=200)
 
-required = ["serial_no", "seat_no", "display_order", "code", "name", "designation"]
-missing = [c for c in required if c not in df.columns]
-if missing:
-    st.error(f"Missing columns: {', '.join(missing)}")
+df = parse_pasted_names(pasted)
+if df.empty:
+    st.warning("Paste at least one name to continue.")
     st.stop()
 
-st.subheader("Edit data")
+st.subheader("Review and override (edit display_order manually if needed)")
 edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
 
-st.subheader("Reorder seats")
+st.subheader("Reorder seats (optional manual drag and drop)")
 seat_labels = [f"{r.seat_no} · {r.code} · {r.name}" for r in edited.sort_values("display_order").itertuples(index=False)]
 if sort_items is not None:
     reordered = sort_items(seat_labels, direction="horizontal")
@@ -263,7 +298,7 @@ if sort_items is not None:
         st.info("Drag the seat cards to change the preview order.")
 else:
     st.info("Install streamlit-sortables to enable drag and drop reordering.")
-    st.caption("Without the component, edit display_order manually.")
+    st.caption("Without the component, edit display_order manually in the table above.")
 
 st.subheader("Word preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
@@ -283,9 +318,13 @@ for i, row in preview_data.iterrows():
     with seat_cols[i % len(seat_cols)]:
         st.markdown(f"<div class='seat-card'><div style='font-size:24px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:16px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
 
-st.markdown("### Current seat order")
+st.markdown("### Current seat order (left to right)")
 order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
 st.dataframe(order_df, use_container_width=True, hide_index=True)
+
+st.markdown("### Dignitary list (as pasted, protocol order 1 to N)")
+protocol_df = edited.sort_values("serial_no")[["serial_no", "code", "name", "designation"]].reset_index(drop=True)
+st.dataframe(protocol_df, use_container_width=True, hide_index=True)
 
 st.markdown("### Recent histories")
 if st.session_state.get("history"):
