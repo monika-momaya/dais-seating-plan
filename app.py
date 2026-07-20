@@ -282,8 +282,7 @@ if df.empty:
     st.warning("Paste at least one name to continue.")
     st.stop()
 
-st.subheader("Review and override (edit display_order manually if needed)")
-edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+edited = df.copy()
 
 st.subheader("Reorder seats (optional manual drag and drop)")
 seat_labels = [f"{r.seat_no} · {r.code} · {r.name}" for r in edited.sort_values("display_order").itertuples(index=False)]
@@ -298,7 +297,7 @@ if sort_items is not None:
         st.info("Drag the seat cards to change the preview order.")
 else:
     st.info("Install streamlit-sortables to enable drag and drop reordering.")
-    st.caption("Without the component, edit display_order manually in the table above.")
+    st.caption("Without the component, edit the pasted list and re-paste to change order.")
 
 st.subheader("Word preview")
 preview_data = edited.sort_values("display_order").reset_index(drop=True)
