@@ -139,6 +139,66 @@ def compute_auto_display_order(n):
     return mapping
 
 
+def compute_two_row_layout(n, per_row=12):
+    row1_count = min(n, per_row)
+    row2_count = n - row1_count
+    row1_ranks = list(range(1, row1_count + 1))
+    row2_ranks = list(range(row1_count + 1, n + 1))
+    row1_order = compute_auto_display_order(len(row1_ranks))
+    row2_order = compute_auto_display_order(len(row2_ranks))
+    assignment = {}
+    for rank in row1_ranks:
+        assignment[rank] = {"row": 1, "seat": row1_order[rank]}
+    for rank in row2_ranks:
+        local_rank = rank - row1_count
+        assignment[rank] = {"row": 2, "seat": row2_order[local_rank]}
+    return assignment
+
+
+def compute_three_table_layout(n, center_size=6):
+    center_count = min(n, center_size)
+    remaining = list(range(center_count + 1, n + 1))
+    center_ranks = list(range(1, center_count + 1))
+    center_order = compute_auto_display_order(len(center_ranks))
+    left_ranks, right_ranks = [], []
+    for i, rank in enumerate(remaining):
+        if i % 2 == 0:
+            right_ranks.append(rank)
+        else:
+            left_ranks.append(rank)
+    left_order = compute_auto_display_order(len(left_ranks))
+    right_order = compute_auto_display_order(len(right_ranks))
+    assignment = {}
+    for rank in center_ranks:
+        assignment[rank] = {"table": "Center", "seat": center_order[rank]}
+    for i, rank in enumerate(left_ranks, start=1):
+        assignment[rank] = {"table": "Left", "seat": left_order[i]}
+    for i, rank in enumerate(right_ranks, start=1):
+        assignment[rank] = {"table": "Right", "seat": right_order[i]}
+    return assignment
+
+
+def apply_layout(df, mode, per_row=12, center_size=6):
+    n = len(df)
+    df = df.sort_values("serial_no").reset_index(drop=True)
+    if mode == "Two Rows":
+        assignment = compute_two_row_layout(n, per_row=per_row)
+        df["group"] = df["serial_no"].map(lambda r: f"Row {assignment[r]['row']}")
+        df["group_seat"] = df["serial_no"].map(lambda r: assignment[r]["seat"])
+        df["group_order"] = df["serial_no"].map(lambda r: assignment[r]["row"])
+    elif mode == "Three Round Tables":
+        assignment = compute_three_table_layout(n, center_size=center_size)
+        table_order = {"Center": 0, "Left": 1, "Right": 2}
+        df["group"] = df["serial_no"].map(lambda r: assignment[r]["table"])
+        df["group_seat"] = df["serial_no"].map(lambda r: assignment[r]["seat"])
+        df["group_order"] = df["group"].map(table_order)
+    else:
+        df["group"] = "Dais"
+        df["group_seat"] = df["display_order"]
+        df["group_order"] = 0
+    return df
+
+
 HONORIFICS = {
     "shri", "smt", "ms", "mrs", "mr", "dr", "miss", "shrimati",
     "prof", "professor", "hon", "hon'ble", "honble", "kumari", "km",
@@ -216,7 +276,7 @@ def parse_pasted_names(text):
     return df
 
 
-def create_document(event_meta, df):
+def create_document(event_meta, df, layout_mode="Single Row"):
     doc = Document()
     set_landscape(doc)
 
@@ -249,28 +309,47 @@ def create_document(event_meta, df):
             style_paragraph(p, size=10, align=WD_ALIGN_PARAGRAPH.RIGHT, color="666666")
 
     doc.add_paragraph("")
-    seat_df = df.sort_values("display_order").reset_index(drop=True)
-    seat_table = doc.add_table(rows=3, cols=max(len(seat_df), 1))
-    seat_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    seat_table.autofit = False
-    cell_width = 10.5 / max(len(seat_df), 1)
 
-    for i, row in seat_df.iterrows():
-        for r in range(3):
-            seat_table.cell(r, i).width = Inches(cell_width)
-            seat_table.cell(r, i).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        num = seat_table.cell(1, i)
-        code = seat_table.cell(2, i)
-        num.text = str(row["seat_no"])
-        code.text = str(row["code"])
-        style_paragraph(num.paragraphs[0], bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
-        style_paragraph(code.paragraphs[0], bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
-        set_cell_shading(num, "F5EFD6")
-        set_cell_shading(code, "F5EFD6")
-        set_cell_border(num, size="6")
-        set_cell_border(code, size="6")
-        set_cell_margins(num, 40, 40, 40, 40)
-        set_cell_margins(code, 40, 40, 40, 40)
+    def render_seat_row(seat_df):
+        seat_table = doc.add_table(rows=3, cols=max(len(seat_df), 1))
+        seat_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        seat_table.autofit = False
+        cell_width = 10.5 / max(len(seat_df), 1)
+        for i, row in seat_df.reset_index(drop=True).iterrows():
+            for r in range(3):
+                seat_table.cell(r, i).width = Inches(cell_width)
+                seat_table.cell(r, i).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            num = seat_table.cell(1, i)
+            code = seat_table.cell(2, i)
+            num.text = str(row["seat_no"])
+            code.text = str(row["code"])
+            style_paragraph(num.paragraphs[0], bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
+            style_paragraph(code.paragraphs[0], bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_shading(num, "F5EFD6")
+            set_cell_shading(code, "F5EFD6")
+            set_cell_border(num, size="6")
+            set_cell_border(code, size="6")
+            set_cell_margins(num, 40, 40, 40, 40)
+            set_cell_margins(code, 40, 40, 40, 40)
+
+    if layout_mode == "Single Row":
+        render_seat_row(df.sort_values("display_order"))
+    elif layout_mode == "Two Rows":
+        for grp in ["Row 1", "Row 2"]:
+            grp_df = df[df["group"] == grp].sort_values("group_seat")
+            if grp_df.empty:
+                continue
+            label_p = doc.add_paragraph(grp)
+            style_paragraph(label_p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
+            render_seat_row(grp_df)
+    elif layout_mode == "Three Round Tables":
+        for grp in ["Center", "Left", "Right"]:
+            grp_df = df[df["group"] == grp].sort_values("group_seat")
+            if grp_df.empty:
+                continue
+            label_p = doc.add_paragraph(f"{grp} Table")
+            style_paragraph(label_p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
+            render_seat_row(grp_df)
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
@@ -343,23 +422,39 @@ if df.empty:
 
 edited = df.copy()
 
-st.subheader("Reorder seats (optional manual drag and drop)")
-seat_labels = [f"{r.seat_no} · {r.code} · {r.name}" for r in edited.sort_values("display_order").itertuples(index=False)]
-if sort_items is not None:
-    reordered = sort_items(seat_labels, direction="horizontal")
-    if reordered:
-        order_map = {label: i + 1 for i, label in enumerate(reordered)}
-        edited = edited.copy()
-        edited["display_order"] = edited.apply(lambda r: order_map.get(f"{r.seat_no} · {r.code} · {r.name}", r.display_order), axis=1)
-        st.success("Preview order updated by drag and drop.")
+st.subheader("Seating layout")
+layout_mode = st.radio(
+    "Choose dais layout",
+    ["Single Row", "Two Rows", "Three Round Tables"],
+    horizontal=True,
+    help="Single Row: default left-right seating. Two Rows: automatic split, front row gets priority. Three Round Tables: top dignitaries in Center, rest split Left/Right.",
+)
+
+per_row = 12
+center_size = 6
+if layout_mode == "Two Rows":
+    per_row = st.number_input("Max seats in front row", min_value=2, max_value=40, value=12, step=1)
+elif layout_mode == "Three Round Tables":
+    center_size = st.number_input("Number of dignitaries at Center table", min_value=1, max_value=len(edited), value=min(6, len(edited)), step=1)
+
+edited = apply_layout(edited, layout_mode, per_row=per_row, center_size=center_size)
+
+if layout_mode == "Single Row":
+    st.subheader("Reorder seats (optional manual drag and drop)")
+    seat_labels = [f"{r.seat_no} · {r.code} · {r.name}" for r in edited.sort_values("display_order").itertuples(index=False)]
+    if sort_items is not None:
+        reordered = sort_items(seat_labels, direction="horizontal")
+        if reordered:
+            order_map = {label: i + 1 for i, label in enumerate(reordered)}
+            edited["display_order"] = edited.apply(lambda r: order_map.get(f"{r.seat_no} · {r.code} · {r.name}", r.display_order), axis=1)
+            st.success("Preview order updated by drag and drop.")
+        else:
+            st.info("Drag the seat cards to change the preview order.")
     else:
-        st.info("Drag the seat cards to change the preview order.")
-else:
-    st.info("Install streamlit-sortables to enable drag and drop reordering.")
-    st.caption("Without the component, edit the pasted list and re-paste to change order.")
+        st.info("Install streamlit-sortables to enable drag and drop reordering.")
+        st.caption("Without the component, edit the pasted list and re-paste to change order.")
 
 st.subheader("Word preview")
-preview_data = edited.sort_values("display_order").reset_index(drop=True)
 left, right = st.columns([1, 2])
 with left:
     if logo is not None:
@@ -371,14 +466,26 @@ with right:
     if time_text:
         st.write(time_text)
 
-seat_cols = st.columns(min(len(preview_data), 12) or 1)
-for i, row in preview_data.iterrows():
-    with seat_cols[i % len(seat_cols)]:
-        st.markdown(f"<div class='seat-card'><div style='font-size:24px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:16px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
-
-st.markdown("### Current seat order (left to right)")
-order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
-st.dataframe(order_df, use_container_width=True, hide_index=True)
+if layout_mode == "Single Row":
+    preview_data = edited.sort_values("display_order").reset_index(drop=True)
+    seat_cols = st.columns(min(len(preview_data), 12) or 1)
+    for i, row in preview_data.iterrows():
+        with seat_cols[i % len(seat_cols)]:
+            st.markdown(f"<div class='seat-card'><div style='font-size:24px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:16px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
+    st.markdown("### Current seat order (left to right)")
+    order_df = preview_data[["seat_no", "code", "name"]].reset_index(drop=True)
+    st.dataframe(order_df, use_container_width=True, hide_index=True)
+else:
+    for grp_name in sorted(edited["group"].unique(), key=lambda g: edited[edited["group"] == g]["group_order"].iloc[0]):
+        grp_df = edited[edited["group"] == grp_name].sort_values("group_seat").reset_index(drop=True)
+        st.markdown(f"#### {grp_name}")
+        seat_cols = st.columns(min(len(grp_df), 12) or 1)
+        for i, row in grp_df.iterrows():
+            with seat_cols[i % len(seat_cols)]:
+                st.markdown(f"<div class='seat-card'><div style='font-size:22px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:15px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
+    st.markdown("### Current seat order by group")
+    order_df = edited.sort_values(["group_order", "group_seat"])[["group", "seat_no", "code", "name"]].reset_index(drop=True)
+    st.dataframe(order_df, use_container_width=True, hide_index=True)
 
 st.markdown("### Dignitary list (as pasted, protocol order 1 to N)")
 protocol_df = edited.sort_values("serial_no")[["serial_no", "code", "name", "designation"]].reset_index(drop=True)
