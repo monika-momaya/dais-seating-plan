@@ -604,9 +604,9 @@ if logo is not None:
     logo_path = f"output/seating-plan-app/{logo.name}"
     Path(logo_path).write_bytes(logo.getbuffer())
 
-save_current_history(title, subtitle, time_text, edited.sort_values("display_order"))
+save_current_history(title, subtitle, time_text, edited)
 
-out = create_document({"title": title, "subtitle": subtitle, "time_text": time_text, "logo_path": logo_path}, edited.sort_values("display_order"))
+out = create_document({"title": title, "subtitle": subtitle, "time_text": time_text, "logo_path": logo_path}, edited, layout_mode=layout_mode)
 
 st.download_button("Download Word document", data=out.getvalue(), file_name="seating-plan.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 st.download_button("Download CSV template", data=edited.to_csv(index=False).encode("utf-8"), file_name="seating-plan.csv", mime="text/csv")
