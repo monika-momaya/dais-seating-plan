@@ -118,11 +118,7 @@ def save_current_history(title, subtitle, time_text, df):
 
 
 def compute_auto_display_order(n):
-    """Return mapping protocol_rank -> display_order (1..n, left to right).
-    Rank 1 sits right-middle, rank 2 sits left-middle, then alternate outward:
-    odd ranks (3,5,7,...) extend the right side, even ranks (4,6,8,...) extend the left side.
-    For odd n, rank 1 ends up as the exact center seat.
-    """
+    """Return mapping protocol_rank -> display_order (1..n, left to right)."""
     left = []
     right = []
     for k in range(1, n + 1):
@@ -313,11 +309,10 @@ def create_document(event_meta, df, layout_mode="Single Row"):
     def style_seat_cell(cell, top_text="", bottom_text=""):
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         cell.text = ""
-        if top_text != "":
-            p1 = cell.paragraphs[0]
-            p1.text = str(top_text)
-            style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
-        p2 = cell.add_paragraph(str(bottom_text)) if bottom_text != "" else cell.add_paragraph("")
+        p1 = cell.paragraphs[0]
+        p1.text = str(top_text)
+        style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
+        p2 = cell.add_paragraph(str(bottom_text))
         style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
         set_cell_shading(cell, "F5EFD6")
         set_cell_border(cell, size="6")
@@ -335,44 +330,6 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             seat_table.cell(1, i).text = ""
             set_cell_border(seat_table.cell(1, i), size="0")
 
-    def render_round_table_block(title_text, grp_df):
-        grp_df = grp_df.sort_values("group_seat").reset_index(drop=True)
-        label_p = doc.add_paragraph(title_text)
-        style_paragraph(label_p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-        outer = doc.add_table(rows=3, cols=3)
-        outer.alignment = WD_TABLE_ALIGNMENT.CENTER
-        outer.autofit = False
-        widths = [3.2, 4.1, 3.2]
-        for c in range(3):
-            for r in range(3):
-                outer.cell(r, c).width = Inches(widths[c])
-                set_cell_margins(outer.cell(r, c), 40, 40, 40, 40)
-        for r in range(3):
-            for c in range(3):
-                outer.cell(r, c).text = ""
-        center = outer.cell(1, 1)
-        center.text = ""
-        p1 = center.paragraphs[0]
-        p1.text = title_text.replace(" Table", "")
-        style_paragraph(p1, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
-        p2 = center.add_paragraph(f"{len(grp_df)} Dignitaries")
-        style_paragraph(p2, size=9, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-        set_cell_shading(center, "E9E2C7")
-        set_cell_border(center, size="10")
-
-        positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
-        extra_rows = []
-        for i, row in grp_df.iterrows():
-            if i < len(positions):
-                rr, cc = positions[i]
-                style_seat_cell(outer.cell(rr, cc), row["seat_no"], row["code"])
-            else:
-                extra_rows.append(row)
-        if extra_rows:
-            extra_label = doc.add_paragraph("Additional seats")
-            style_paragraph(extra_label, bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-            render_seat_row(pd.DataFrame(extra_rows))
-
     if layout_mode == "Single Row":
         render_seat_row(df.sort_values("display_order"))
     elif layout_mode == "Two Rows":
@@ -385,19 +342,19 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             render_seat_row(grp_df)
     elif layout_mode == "Three Round Tables":
         display_groups = ["Left", "Center", "Right"]
-        outer = doc.add_table(rows=3, cols=3)
-        outer.style = "Table Grid"
-        outer.alignment = WD_TABLE_ALIGNMENT.CENTER
-        outer.autofit = False
-        outer.allow_autofit = False
-        col_widths = [Inches(2.15), Inches(2.45), Inches(2.15)]
+        trio = doc.add_table(rows=1, cols=3)
+        trio.style = "Table Grid"
+        trio.alignment = WD_TABLE_ALIGNMENT.CENTER
+        trio.autofit = False
+        trio.allow_autofit = False
+        col_widths = [Inches(2.2), Inches(2.6), Inches(2.2)]
         for c in range(3):
-            for r in range(3):
-                outer.cell(r, c).width = col_widths[c]
-                outer.cell(r, c).text = ""
+            trio.cell(0, c).width = col_widths[c]
+            trio.cell(0, c).text = ""
         for idx, grp in enumerate(display_groups):
-            inner_df = df[df["group"] == grp].sort_values("group_seat").reset_index(drop=True)
-            cell = outer.cell(idx, 1)
+            grp_df = df[df["group"] == grp].sort_values("group_seat").reset_index(drop=True)
+            cell = trio.cell(0, idx)
+            cell.text = ""
             label = cell.paragraphs[0]
             label.text = f"{grp} Table"
             style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
@@ -406,7 +363,7 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            inner_cell_width = 0.85 if grp == "Center" else 0.78
+            inner_cell_width = 0.70 if grp == "Center" else 0.64
             positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
             for c in range(3):
                 for r in range(3):
@@ -417,7 +374,7 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             style_paragraph(center.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
             set_cell_shading(center, "E9E2C7")
             set_cell_border(center, size="8")
-            for j, row in inner_df.iterrows():
+            for j, row in grp_df.iterrows():
                 if j >= len(positions):
                     break
                 rr, cc = positions[j]
@@ -524,7 +481,7 @@ if layout_mode == "Single Row":
             st.info("Drag the seat cards to change the preview order.")
     else:
         st.info("Install streamlit-sortables to enable drag and drop reordering.")
-        st.caption("Without the component, edit the pasted list and re-paste to change order.")
+        st.caption("Without the component, edit display_order manually in the table above.")
 
 st.subheader("Word preview")
 left, right = st.columns([1, 2])
@@ -558,16 +515,16 @@ elif layout_mode == "Two Rows":
             with seat_cols[i % len(seat_cols)]:
                 st.markdown(f"<div class='seat-card'><div style='font-size:22px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:15px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
     st.markdown("### Current seat order by group")
-    order_df = edited.sort_values(["group_order", "group_seat"])[["group", "seat_no", "code", "name"]].reset_index(drop=True)
+    order_df = edited.sort_values([\"group_order\", \"group_seat\"])[[\"group\", \"seat_no\", \"code\", \"name\"]].reset_index(drop=True)
     st.dataframe(order_df, use_container_width=True, hide_index=True)
 else:
-    display_groups = ["Left", "Center", "Right"]
+    display_groups = [\"Left\", \"Center\", \"Right\"]
     table_cols = st.columns([1, 1.18, 1])
     for idx, grp_name in enumerate(display_groups):
-        grp_df = edited[edited["group"] == grp_name].sort_values("group_seat").reset_index(drop=True)
+        grp_df = edited[edited[\"group\"] == grp_name].sort_values(\"group_seat\").reset_index(drop=True)
         with table_cols[idx]:
-            st.markdown(f"#### {grp_name} Table")
-            st.markdown("<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center;justify-items:center;margin:10px 0;'>", unsafe_allow_html=True)
+            st.markdown(f\"#### {grp_name} Table\")
+            st.markdown(\"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center;justify-items:center;margin:10px 0;'>\", unsafe_allow_html=True)
             positions = {(0,1):None,(1,2):None,(2,1):None,(1,0):None,(0,2):None,(2,2):None,(2,0):None,(0,0):None}
             grid = [[None,None,None],[None,None,None],[None,None,None]]
             pos_list = list(positions.keys())
@@ -579,47 +536,47 @@ else:
             for rr in range(3):
                 for cc in range(3):
                     if rr == 1 and cc == 1:
-                        circle_size = 126 if grp_name == "Center" else 108
-                        font_size = 17 if grp_name == "Center" else 15
-                        st.markdown(f"<div style='border:2px solid #b9ab73;background:#efe7cf;border-radius:999px;width:{circle_size}px;height:{circle_size}px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#555;text-align:center;font-size:{font_size}px'>{grp_name}</div>", unsafe_allow_html=True)
+                        circle_size = 126 if grp_name == \"Center\" else 108
+                        font_size = 17 if grp_name == \"Center\" else 15
+                        st.markdown(f\"<div style='border:2px solid #b9ab73;background:#efe7cf;border-radius:999px;width:{circle_size}px;height:{circle_size}px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#555;text-align:center;font-size:{font_size}px'>{grp_name}</div>\", unsafe_allow_html=True)
                     elif grid[rr][cc] is not None:
                         row = grid[rr][cc]
-                        card_width = 100 if grp_name == "Center" else 90
-                        card_height = 76 if grp_name == "Center" else 70
-                        st.markdown(f"<div class='seat-card' style='width:{card_width}px;min-height:{card_height}px'><div style='font-size:20px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:14px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
+                        card_width = 100 if grp_name == \"Center\" else 90
+                        card_height = 76 if grp_name == \"Center\" else 70
+                        st.markdown(f\"<div class='seat-card' style='width:{card_width}px;min-height:{card_height}px'><div style='font-size:20px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:14px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>\", unsafe_allow_html=True)
                     else:
-                        spacer_width = 100 if grp_name == "Center" else 90
-                        spacer_height = 76 if grp_name == "Center" else 70
-                        st.markdown(f"<div style='width:{spacer_width}px;height:{spacer_height}px'></div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("### Current seat order by group")
-    order_df = edited.sort_values(["group_order", "group_seat"])[["group", "seat_no", "code", "name"]].reset_index(drop=True)
+                        spacer_width = 100 if grp_name == \"Center\" else 90
+                        spacer_height = 76 if grp_name == \"Center\" else 70
+                        st.markdown(f\"<div style='width:{spacer_width}px;height:{spacer_height}px'></div>\", unsafe_allow_html=True)
+            st.markdown(\"</div>\", unsafe_allow_html=True)
+    st.markdown(\"### Current seat order by group\")
+    order_df = edited.sort_values([\"group_order\", \"group_seat\"])[[\"group\", \"seat_no\", \"code\", \"name\"]].reset_index(drop=True)
     st.dataframe(order_df, use_container_width=True, hide_index=True)
 
-st.markdown("### Dignitary list (as pasted, protocol order 1 to N)")
-protocol_df = edited.sort_values("serial_no")[["serial_no", "code", "name", "designation"]].reset_index(drop=True)
+st.markdown(\"### Dignitary list (as pasted, protocol order 1 to N)\")
+protocol_df = edited.sort_values(\"serial_no\")[[\"serial_no\", \"code\", \"name\", \"designation\"]].reset_index(drop=True)
 st.dataframe(protocol_df, use_container_width=True, hide_index=True)
 
-st.markdown("### Recent histories")
-if st.session_state.get("history"):
-    for idx, item in enumerate(st.session_state["history"][:st.session_state.get("history_limit", 5)]):
-        with st.expander(f"{idx+1}. {item.get('title', '')}", expanded=(idx == 0)):
-            st.write(item.get("subtitle", ""))
-            st.write(item.get("time_text", ""))
-            hist_df = pd.DataFrame(item.get("rows", []))
+st.markdown(\"### Recent histories\")
+if st.session_state.get(\"history\"):
+    for idx, item in enumerate(st.session_state[\"history\"][:st.session_state.get(\"history_limit\", 5)]):
+        with st.expander(f\"{idx+1}. {item.get('title', '')}\", expanded=(idx == 0)):
+            st.write(item.get(\"subtitle\", \"\"))
+            st.write(item.get(\"time_text\", \"\"))
+            hist_df = pd.DataFrame(item.get(\"rows\", []))
             if not hist_df.empty:
                 st.dataframe(hist_df, use_container_width=True, hide_index=True)
 else:
-    st.caption("No saved history yet.")
+    st.caption(\"No saved history yet.\")
 
 logo_path = None
 if logo is not None:
-    logo_path = f"output/seating-plan-app/{logo.name}"
+    logo_path = f\"output/seating-plan-app/{logo.name}\"
     Path(logo_path).write_bytes(logo.getbuffer())
 
 save_current_history(title, subtitle, time_text, edited)
 
-out = create_document({"title": title, "subtitle": subtitle, "time_text": time_text, "logo_path": logo_path}, edited, layout_mode=layout_mode)
+out = create_document({\"title\": title, \"subtitle\": subtitle, \"time_text\": time_text, \"logo_path\": logo_path}, edited, layout_mode=layout_mode)
 
-st.download_button("Download Word document", data=out.getvalue(), file_name="seating-plan.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-st.download_button("Download CSV template", data=edited.to_csv(index=False).encode("utf-8"), file_name="seating-plan.csv", mime="text/csv")
+st.download_button(\"Download Word document\", data=out.getvalue(), file_name=\"seating-plan.docx\", mime=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document\")
+st.download_button(\"Download CSV template\", data=edited.to_csv(index=False).encode(\"utf-8\"), file_name=\"seating-plan.csv\", mime=\"text/csv\")
