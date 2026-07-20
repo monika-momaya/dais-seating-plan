@@ -384,28 +384,20 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             style_paragraph(label_p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
             render_seat_row(grp_df)
     elif layout_mode == "Three Round Tables":
-        trio = doc.add_table(rows=1, cols=3)
-        trio.alignment = WD_TABLE_ALIGNMENT.CENTER
-        trio.autofit = False
         display_groups = ["Left", "Center", "Right"]
-        table_widths = {0: 3.0, 1: 4.0, 2: 3.0}
-        for i, grp in enumerate(display_groups):
-            cell = trio.cell(0, i)
-            cell.width = Inches(table_widths[i])
-            cell.text = ""
+        for grp in display_groups:
             inner_df = df[df["group"] == grp].sort_values("group_seat").reset_index(drop=True)
-            p = cell.paragraphs[0]
-            p.text = f"{grp} Table"
-            style_paragraph(p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-            inner = cell.add_table(rows=3, cols=3)
-            inner.alignment = WD_TABLE_ALIGNMENT.CENTER
-            inner.autofit = False
-            inner_cell_width = 1.15 if grp == "Center" else 0.95
+            label = doc.add_paragraph(f"{grp} Table")
+            style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
+            outer = doc.add_table(rows=3, cols=3)
+            outer.alignment = WD_TABLE_ALIGNMENT.CENTER
+            outer.autofit = False
+            outer_cell_width = 1.3 if grp == "Center" else 1.1
             for c in range(3):
                 for r in range(3):
-                    inner.cell(r, c).width = Inches(inner_cell_width)
-                    inner.cell(r, c).text = ""
-            center = inner.cell(1, 1)
+                    outer.cell(r, c).width = Inches(outer_cell_width)
+                    outer.cell(r, c).text = ""
+            center = outer.cell(1, 1)
             center.text = grp
             style_paragraph(center.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
             set_cell_shading(center, "E9E2C7")
@@ -415,7 +407,8 @@ def create_document(event_meta, df, layout_mode="Single Row"):
                 if j >= len(positions):
                     break
                 rr, cc = positions[j]
-                style_seat_cell(inner.cell(rr, cc), row["seat_no"], row["code"])
+                style_seat_cell(outer.cell(rr, cc), row["seat_no"], row["code"])
+            doc.add_paragraph("")
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
