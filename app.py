@@ -18,7 +18,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-st.set_page_config(page_title="Seating Plan Generator", layout="wide")
+st.set_page_config(page_title="Dais Seating Plan", layout="wide")
 
 
 def set_paragraph_single_spacing(paragraph):
@@ -139,15 +139,74 @@ def compute_auto_display_order(n):
     return mapping
 
 
+HONORIFICS = {
+    "shri", "smt", "ms", "mrs", "mr", "dr", "miss", "shrimati",
+    "prof", "professor", "hon", "hon'ble", "honble", "kumari", "km",
+}
+
+
+def strip_honorifics(name):
+    words = []
+    for w in name.split():
+        clean = w.strip(".,").lower()
+        if clean not in HONORIFICS:
+            words.append(w.strip(".,"))
+    return words
+
+
+def base_code(words):
+    return "".join(w[0].upper() for w in words[:3] if w)
+
+
+def disambiguate_codes(names):
+    word_lists = [strip_honorifics(n) for n in names]
+    codes = [base_code(w) for w in word_lists]
+    seen_count = {}
+    final_codes = []
+    for i, code in enumerate(codes):
+        words = word_lists[i]
+        if codes.count(code) == 1:
+            final_codes.append(code)
+            continue
+        extra_len = 2
+        candidate = code
+        while True:
+            key = code
+            occurrence = seen_count.get(key, 0)
+            if occurrence == 0:
+                candidate = code
+            else:
+                last_word = words[-1] if words else ""
+                candidate = base_code(words[:-1]) + last_word[:extra_len].upper() if words else code
+                if candidate in final_codes:
+                    extra_len += 1
+                    continue
+            if candidate not in final_codes:
+                break
+            extra_len += 1
+        seen_count[key] = seen_count.get(key, 0) + 1
+        final_codes.append(candidate)
+    return final_codes
+
+
 def parse_pasted_names(text):
     rows = []
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    for i, line in enumerate(lines, start=1):
+    names = []
+    designations = []
+    manual_codes = []
+    for line in lines:
         parts = [p.strip() for p in line.split("|")]
-        name = parts[0] if len(parts) > 0 else ""
-        designation = parts[1] if len(parts) > 1 else ""
-        code = parts[2] if len(parts) > 2 else "".join([w[0].upper() for w in name.split()[:3] if w])
+        names.append(parts[0] if len(parts) > 0 else "")
+        designations.append(parts[1] if len(parts) > 1 else "")
+        manual_codes.append(parts[2] if len(parts) > 2 else None)
+
+    auto_codes = disambiguate_codes(names)
+    codes = [mc if mc else ac for mc, ac in zip(manual_codes, auto_codes)]
+
+    for i, (name, designation, code) in enumerate(zip(names, designations, codes), start=1):
         rows.append({"serial_no": i, "code": code, "name": name, "designation": designation})
+
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -257,7 +316,7 @@ def sample_text():
 
 st.markdown("<style>.seat-card{border:1px solid #d8d8d8;border-radius:14px;padding:12px 8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center}</style>", unsafe_allow_html=True)
 
-st.title("Free Seating Plan Generator")
+st.title("Dais Seating Plan")
 st.caption("Paste dignitary names in protocol order. Seating is auto-generated, with manual override available.")
 
 with st.sidebar:
