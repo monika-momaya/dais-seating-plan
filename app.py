@@ -404,13 +404,10 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         trio.columns[2].width = Inches(3.0)
 
         templates = {
-            5: {"n_cols": 3, "slots": [(0, 1), (0, 0), (0, 2), (1, 0), (1, 2)], "label_cols": (1, 1)},
-            6: {"n_cols": 4, "slots": [(0, 1), (0, 2), (0, 0), (0, 3), (1, 0), (1, 3)], "label_cols": (1, 2)},
-        }
-
-        default_templates = {
-            7: {"n_cols": 4, "slots": [(0, 1), (0, 2), (0, 0), (0, 3), (1, 0), (1, 2), (1, 3)], "label_cols": (1, 2)},
-            8: {"n_cols": 4, "slots": [(0, 1), (0, 2), (0, 0), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)], "label_cols": (1, 2)},
+            5: {"n_cols": 3, "top": [1, 2, 3], "bottom": [4, None, 5], "label_cols": (1, 1)},
+            6: {"n_cols": 4, "top": [1, 2, 3, 4], "bottom": [5, None, None, 6], "label_cols": (1, 2)},
+            7: {"n_cols": 4, "top": [1, 2, 3, 4], "bottom": [5, None, 6, 7], "label_cols": (1, 2)},
+            8: {"n_cols": 4, "top": [1, 2, 3, 4], "bottom": [5, 6, 7, 8], "label_cols": (1, 2)},
         }
 
         def write_cell(cell, seat):
@@ -428,19 +425,14 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         for idx, grp in enumerate(display_groups):
             grp_df = df[df["group"] == grp].sort_values("group_seat")
             seat_rows = [(int(r.seat_no), r.code) for r in grp_df.itertuples(index=False)]
-            n = len(seat_rows)
-            tmpl = templates.get(n) or default_templates.get(n)
-            if tmpl is None:
-                if n <= 4:
-                    tmpl = {"n_cols": 3, "slots": [(0, 1), (0, 0), (0, 2), (1, 0)], "label_cols": (1, 1)}
-                else:
-                    tmpl = {"n_cols": 4, "slots": [(0, 1), (0, 2), (0, 0), (0, 3), (1, 0), (1, 3)], "label_cols": (1, 2)}
+            n = min(len(seat_rows), 8)
+            tmpl = templates.get(n, templates[6])
             cell = trio.cell(0, idx)
             cell.text = ""
             cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
             spacer = cell.paragraphs[0]
             spacer.text = ""
-            style_paragraph(spacer, size=8 if grp == "Center" else 12)
+            style_paragraph(spacer, size=2 if grp == "Center" else 12)
             label = cell.add_paragraph()
             label.text = f"{grp} Table"
             style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
@@ -450,16 +442,19 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            widths = [0.78] * tmpl["n_cols"]
-            mid = tmpl["n_cols"] // 2
-            widths[mid] = 1.05 if grp == "Center" else 0.88
+            widths = [0.82] * tmpl["n_cols"]
+            widths[tmpl["n_cols"] // 2] = 1.05 if grp == "Center" else 0.9
             for c in range(tmpl["n_cols"]):
                 for r in range(2):
                     inner.cell(r, c).width = Inches(widths[c])
                     inner.cell(r, c).text = ""
 
-            for seat, slot in zip(seat_rows[:len(tmpl["slots"])], tmpl["slots"]):
-                write_cell(inner.cell(slot[0], slot[1]), seat)
+            top = tmpl["top"]
+            bottom = tmpl["bottom"]
+            for seat, col in zip(seat_rows[:len(top)], range(len(top))):
+                write_cell(inner.cell(0, col), seat)
+            for seat, col in zip(seat_rows[len(top):len(top)+len(bottom)], [c for c in range(len(bottom)) if bottom[c] is not None]):
+                write_cell(inner.cell(1, col), seat)
 
             a, b = tmpl["label_cols"]
             label_cell = inner.cell(1, a)
