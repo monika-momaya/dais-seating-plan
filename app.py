@@ -404,19 +404,45 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             trio.cell(0, c).width = col_widths[c]
             trio.cell(0, c).text = ""
 
+        # Hand-tuned slot templates so 5 and 6-seat tables render exactly like the
+        # approved reference layouts. Each template lists, in rank order (1 = most
+        # senior), which (row, col) slot that rank occupies in an n_cols-wide 2-row grid.
+        # "LABEL" marks the fixed center cell (table name / MAIN).
+        templates = {
+            1: {"n_cols": 3, "label_col": 1, "slots": [(0, 1)]},
+            2: {"n_cols": 3, "label_col": 1, "slots": [(0, 2), (0, 0)]},
+            3: {"n_cols": 3, "label_col": 1, "slots": [(0, 2), (0, 0), (1, 2)]},
+            4: {"n_cols": 3, "label_col": 1, "slots": [(0, 2), (0, 0), (1, 2), (0, 1)]},
+            5: {"n_cols": 3, "label_col": 1, "slots": [(0, 2), (0, 1), (1, 0), (0, 0), (1, 2)]},
+            6: {"n_cols": 4, "label_col": None, "label_span": (1, 2),
+                "slots": [(0, 1), (0, 2), (0, 3), (0, 0), (1, 0), (1, 3)]},
+            7: {"n_cols": 4, "label_col": None, "label_span": (1, 2),
+                "slots": [(0, 1), (0, 2), (0, 3), (0, 0), (1, 0), (1, 3), (1, 1)]},
+            8: {"n_cols": 4, "label_col": None, "label_span": (1, 2),
+                "slots": [(0, 1), (0, 2), (0, 3), (0, 0), (1, 0), (1, 3), (1, 1), (1, 2)]},
+        }
+
         for idx, grp in enumerate(display_groups):
             grp_df = df[df["group"] == grp].sort_values("group_seat")
             seat_rows = [(int(r.seat_no), r.code) for r in grp_df.itertuples(index=False)]
             n_seats = len(seat_rows)
-            top_n = -(-n_seats // 2)  # ceil half sits on top row
-            bottom_n = n_seats - top_n
-            n_cols = max(top_n, bottom_n + 1, 3)
-            top_row = seat_rows[:top_n]
-            bottom_row = seat_rows[top_n:]
+            n_seats_key = min(max(n_seats, 1), 8)
+            tmpl = templates[n_seats_key]
+            n_cols = tmpl["n_cols"]
 
             cell = trio.cell(0, idx)
             cell.text = ""
-            label = cell.paragraphs[0]
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            if grp == "Center":
+                spacer = cell.paragraphs[0]
+                spacer.text = ""
+                style_paragraph(spacer, size=6)
+                label = cell.add_paragraph()
+            else:
+                spacer = cell.paragraphs[0]
+                spacer.text = ""
+                style_paragraph(spacer, size=14)
+                label = cell.add_paragraph()
             label.text = f"{grp} Table"
             style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
 
@@ -425,9 +451,9 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            base_w = 1.02 if grp == "Center" else 0.82
-            side_w = 0.72
-            mid_col = n_cols // 2
+            base_w = 1.0 if grp == "Center" else 0.82
+            side_w = 0.7
+            mid_col = tmpl.get("label_col", n_cols // 2)
             for c in range(n_cols):
                 w = base_w if c == mid_col else side_w
                 for r in range(2):
@@ -436,8 +462,6 @@ def create_document(event_meta, df, layout_mode="Single Row"):
 
             def fill_cell(cell2, seat):
                 cell2.text = ""
-                if seat is None:
-                    return
                 seat_no, code = seat
                 p1 = cell2.paragraphs[0]
                 p1.text = str(seat_no)
@@ -448,30 +472,19 @@ def create_document(event_meta, df, layout_mode="Single Row"):
                 set_cell_border(cell2, size="5")
                 set_cell_margins(cell2, 10, 10, 10, 10)
 
-            # top row: center the seats, leave outer cells blank if fewer than n_cols
-            offset_top = (n_cols - top_n) // 2
-            for c in range(n_cols):
-                i = c - offset_top
-                seat = top_row[i] if 0 <= i < top_n else None
-                fill_cell(inner.cell(0, c), seat)
+            for rank, seat in enumerate(seat_rows[:len(tmpl["slots"])], start=1):
+                r, c = tmpl["slots"][rank - 1]
+                fill_cell(inner.cell(r, c), seat)
 
-            # bottom row: MAIN/label goes in the middle column; remaining seats fill around it
-            bottom_slots = [c for c in range(n_cols) if c != mid_col]
-            offset_bottom = max((len(bottom_slots) - bottom_n) // 2, 0)
-            bi = 0
-            for c in range(n_cols):
-                cell2 = inner.cell(1, c)
-                if c == mid_col:
-                    cell2.text = "MAIN" if grp == "Center" else grp
-                    style_paragraph(cell2.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
-                    set_cell_shading(cell2, "E9E2C7")
-                    set_cell_border(cell2, size="8")
-                    set_cell_margins(cell2, 10, 10, 10, 10)
-                else:
-                    slot_index = bottom_slots.index(c)
-                    seat_idx = slot_index - offset_bottom
-                    seat = bottom_row[seat_idx] if 0 <= seat_idx < bottom_n else None
-                    fill_cell(cell2, seat)
+            label_cell = inner.cell(1, tmpl["label_col"]) if tmpl.get("label_col") is not None else inner.cell(1, tmpl["label_span"][0])
+            if tmpl.get("label_col") is None:
+                start_c, end_c = tmpl["label_span"]
+                label_cell = inner.cell(1, start_c).merge(inner.cell(1, end_c))
+            label_cell.text = "MAIN" if grp == "Center" else grp
+            style_paragraph(label_cell.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_shading(label_cell, "E9E2C7")
+            set_cell_border(label_cell, size="8")
+            set_cell_margins(label_cell, 10, 10, 10, 10)
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
