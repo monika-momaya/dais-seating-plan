@@ -404,72 +404,64 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             trio.cell(0, c).width = col_widths[c]
             trio.cell(0, c).text = ""
 
-        templates = {
-            5: {"n_cols": 3, "slots": [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2)], "label_span": (1, 1)},
-            6: {"n_cols": 4, "slots": [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 3)], "label_span": (1, 2)},
-            7: {"n_cols": 4, "slots": [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 2), (1, 3)], "label_span": (1, 2)},
-            8: {"n_cols": 4, "slots": [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)], "label_span": (1, 2)},
+        # Exact 2x3 layout matching the required reference: top row = 3 seats, bottom row = seat, label, seat.
+        layouts = {
+            "Left":   {"top": [9, 7, 11], "bottom": [13, None, 15]},
+            "Center": {"top": [2, 1, 3],  "bottom": [4, None, 5]},
+            "Right":  {"top": [8, 6, 10], "bottom": [12, None, 14]},
         }
+        code_map = {int(r.seat_no): r.code for r in df.itertuples(index=False)}
 
         for idx, grp in enumerate(display_groups):
-            grp_df = df[df["group"] == grp].sort_values("group_seat")
-            seat_rows = [(int(r.seat_no), r.code) for r in grp_df.itertuples(index=False)]
-            n = min(len(seat_rows), 8)
-            tmpl = templates.get(n, templates[5])
-            n_cols = tmpl["n_cols"]
             cell = trio.cell(0, idx)
             cell.text = ""
-            if grp == "Center":
-                cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
-                spacer = cell.paragraphs[0]
-                spacer.text = ""
-                style_paragraph(spacer, size=5)
-            else:
-                cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
-                spacer = cell.paragraphs[0]
-                spacer.text = ""
-                style_paragraph(spacer, size=13)
-            label = cell.add_paragraph()
+            label = cell.paragraphs[0]
             label.text = f"{grp} Table"
             style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
 
-            inner = cell.add_table(rows=2, cols=n_cols)
+            inner = cell.add_table(rows=2, cols=3)
             inner.style = "Table Grid"
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            widths = [0.82] * n_cols
-            mid = n_cols // 2
-            widths[mid] = 1.02 if grp == "Center" else 0.9
-            for c in range(n_cols):
+            widths = [0.78, 1.02 if grp == "Center" else 0.82, 0.78]
+            for c in range(3):
                 for r in range(2):
                     inner.cell(r, c).width = Inches(widths[c])
                     inner.cell(r, c).text = ""
 
-            def fill(cell2, seat):
+            layout = layouts[grp]
+            for c, seat_no in enumerate(layout["top"]):
+                cell2 = inner.cell(0, c)
                 cell2.text = ""
-                seat_no, code = seat
-                p1 = cell2.paragraphs[0]
-                p1.text = str(seat_no)
-                style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
-                p2 = cell2.add_paragraph(code)
-                style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
-                set_cell_shading(cell2, "F5EFD6")
-                set_cell_border(cell2, size="5")
-                set_cell_margins(cell2, 10, 10, 10, 10)
+                if seat_no in code_map:
+                    p1 = cell2.paragraphs[0]
+                    p1.text = str(seat_no)
+                    style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
+                    p2 = cell2.add_paragraph(code_map[seat_no])
+                    style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
+                    set_cell_shading(cell2, "F5EFD6")
+                    set_cell_border(cell2, size="5")
+                    set_cell_margins(cell2, 10, 10, 10, 10)
 
-            for seat, slot in zip(seat_rows[:n], tmpl["slots"]):
-                fill(inner.cell(slot[0], slot[1]), seat)
-
-            a, b = tmpl["label_span"]
-            label_cell = inner.cell(1, a)
-            if a != b:
-                label_cell = label_cell.merge(inner.cell(1, b))
-            label_cell.text = "MAIN" if grp == "Center" else grp
-            style_paragraph(label_cell.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
-            set_cell_shading(label_cell, "E9E2C7")
-            set_cell_border(label_cell, size="8")
-            set_cell_margins(label_cell, 10, 10, 10, 10)
+            for c, seat_no in enumerate(layout["bottom"]):
+                cell2 = inner.cell(1, c)
+                cell2.text = ""
+                if seat_no is None:
+                    cell2.text = "MAIN" if grp == "Center" else grp
+                    style_paragraph(cell2.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
+                    set_cell_shading(cell2, "E9E2C7")
+                    set_cell_border(cell2, size="8")
+                    set_cell_margins(cell2, 10, 10, 10, 10)
+                elif seat_no in code_map:
+                    p1 = cell2.paragraphs[0]
+                    p1.text = str(seat_no)
+                    style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
+                    p2 = cell2.add_paragraph(code_map[seat_no])
+                    style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
+                    set_cell_shading(cell2, "F5EFD6")
+                    set_cell_border(cell2, size="5")
+                    set_cell_margins(cell2, 10, 10, 10, 10)
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
