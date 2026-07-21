@@ -393,13 +393,6 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             style_paragraph(label_p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
             render_seat_row(grp_df)
     elif layout_mode == "Three Round Tables":
-        def split_for_round_tables(rows):
-            rows = list(rows)
-            left = rows[0::2]
-            right = rows[1::2]
-            center = rows[:min(5, len(rows))]
-            return left, center, right
-
         display_groups = ["Left", "Center", "Right"]
         trio = doc.add_table(rows=1, cols=3)
         trio.style = "Table Grid"
@@ -410,47 +403,55 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         for c in range(3):
             trio.cell(0, c).width = col_widths[c]
             trio.cell(0, c).text = ""
+
+        # Exact convention requested: 1 in Center, with surrounding numbers arranged like the reference.
         layouts = {
             "Left": [13, 9, 7, 11, 15],
             "Center": [4, 2, 1, 3, 5],
             "Right": [12, 8, 6, 10, 14],
         }
-        seat_lookup = {int(r.seat_no): r.code for r in df.itertuples(index=False)}
+        code_map = {int(r.seat_no): r.code for r in df.itertuples(index=False)}
+        positions = [(0,0), (0,1), (0,2), (1,0), (1,2), (2,0), (2,1), (2,2)]
+
         for idx, grp in enumerate(display_groups):
             cell = trio.cell(0, idx)
             cell.text = ""
             label = cell.paragraphs[0]
             label.text = f"{grp} Table"
             style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
+
             inner = cell.add_table(rows=3, cols=3)
             inner.style = "Table Grid"
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            widths = [0.85, 1.10 if grp == "Center" else 0.88, 0.85]
+            widths = [0.82, 1.08 if grp == "Center" else 0.86, 0.82]
             for c in range(3):
                 for r in range(3):
                     inner.cell(r, c).width = Inches(widths[c])
                     inner.cell(r, c).text = ""
+
             center = inner.cell(1, 1)
             center.text = "MAIN" if grp == "Center" else grp
             style_paragraph(center.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
             set_cell_shading(center, "E9E2C7")
             set_cell_border(center, size="8")
-            positions = [(0,0), (0,1), (0,2), (1,0), (1,2), (2,0), (2,1), (2,2)]
+            set_cell_margins(center, 14, 14, 14, 14)
+
             for j, seat_no in enumerate(layouts[grp]):
-                if seat_no not in seat_lookup or j >= len(positions):
+                if seat_no not in code_map or j >= len(positions):
                     continue
                 rr, cc = positions[j]
-                inner.cell(rr, cc).text = ""
-                p1 = inner.cell(rr, cc).paragraphs[0]
+                cell2 = inner.cell(rr, cc)
+                cell2.text = ""
+                p1 = cell2.paragraphs[0]
                 p1.text = str(seat_no)
                 style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
-                p2 = inner.cell(rr, cc).add_paragraph(seat_lookup[seat_no])
+                p2 = cell2.add_paragraph(code_map[seat_no])
                 style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
-                set_cell_shading(inner.cell(rr, cc), "F5EFD6")
-                set_cell_border(inner.cell(rr, cc), size="5")
-                set_cell_margins(inner.cell(rr, cc), 18, 18, 18, 18)
+                set_cell_shading(cell2, "F5EFD6")
+                set_cell_border(cell2, size="5")
+                set_cell_margins(cell2, 10, 10, 10, 10)
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
