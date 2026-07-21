@@ -310,32 +310,6 @@ def create_document(event_meta, df, layout_mode="Single Row"):
 
     doc.add_paragraph("")
 
-    def write_round_table_block(container_cell, grp_name, grp_df, center_width=2.0, seat_width=0.66):
-        container_cell.text = ""
-        label = container_cell.paragraphs[0]
-        label.text = f"{grp_name} Table"
-        style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-        inner = container_cell.add_table(rows=3, cols=3)
-        inner.style = "Table Grid"
-        inner.alignment = WD_TABLE_ALIGNMENT.CENTER
-        inner.autofit = False
-        inner.allow_autofit = False
-        for c in range(3):
-            for r in range(3):
-                inner.cell(r, c).width = Inches(seat_width)
-                inner.cell(r, c).text = ""
-        center = inner.cell(1, 1)
-        center.width = Inches(center_width)
-        center.text = grp_name
-        style_paragraph(center.paragraphs[0], bold=True, size=12 if grp_name == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
-        set_cell_shading(center, "E9E2C7")
-        set_cell_border(center, size="8")
-        positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
-        for j, row in grp_df.iterrows():
-            if j >= len(positions):
-                break
-            rr, cc = positions[j]
-            style_seat_cell(inner.cell(rr, cc), row["seat_no"], row["code"])
 
     def style_seat_cell(cell, top_text="", bottom_text=""):
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -417,13 +391,46 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         trio.alignment = WD_TABLE_ALIGNMENT.CENTER
         trio.autofit = False
         trio.allow_autofit = False
-        col_widths = [Inches(2.15), Inches(2.55), Inches(2.15)]
+        col_widths = [Inches(2.85), Inches(3.10), Inches(2.85)]
         for c in range(3):
             trio.cell(0, c).width = col_widths[c]
             trio.cell(0, c).text = ""
+        positions = [(0,0), (0,1), (0,2), (1,0), (1,2), (2,0), (2,1), (2,2)]
         for idx, grp in enumerate(display_groups):
             grp_df = df[df["group"] == grp].sort_values("group_seat").reset_index(drop=True)
-            write_round_table_block(trio.cell(0, idx), grp, grp_df, center_width=2.05 if grp == "Center" else 1.9, seat_width=0.60 if grp == "Center" else 0.56)
+            cell = trio.cell(0, idx)
+            cell.text = ""
+            label = cell.paragraphs[0]
+            label.text = f"{grp} Table"
+            style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
+            inner = cell.add_table(rows=3, cols=3)
+            inner.style = "Table Grid"
+            inner.alignment = WD_TABLE_ALIGNMENT.CENTER
+            inner.autofit = False
+            inner.allow_autofit = False
+            widths = [0.85, 1.10 if grp == "Center" else 0.88, 0.85]
+            for c in range(3):
+                for r in range(3):
+                    inner.cell(r, c).width = Inches(widths[c])
+                    inner.cell(r, c).text = ""
+            center = inner.cell(1, 1)
+            center.text = grp.upper() if grp == "Center" else grp
+            style_paragraph(center.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_shading(center, "E9E2C7")
+            set_cell_border(center, size="8")
+            for j, row in grp_df.iterrows():
+                if j >= len(positions):
+                    break
+                rr, cc = positions[j]
+                inner.cell(rr, cc).text = ""
+                p1 = inner.cell(rr, cc).paragraphs[0]
+                p1.text = str(row["seat_no"])
+                style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
+                p2 = inner.cell(rr, cc).add_paragraph(str(row["code"]))
+                style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
+                set_cell_shading(inner.cell(rr, cc), "F5EFD6")
+                set_cell_border(inner.cell(rr, cc), size="5")
+                set_cell_margins(inner.cell(rr, cc), 18, 18, 18, 18)
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
