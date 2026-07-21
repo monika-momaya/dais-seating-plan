@@ -390,7 +390,7 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         trio.alignment = WD_TABLE_ALIGNMENT.CENTER
         trio.autofit = False
         trio.allow_autofit = False
-        col_widths = [Inches(2.2), Inches(2.6), Inches(2.2)]
+        col_widths = [Inches(2.0), Inches(2.35), Inches(2.0)]
         for c in range(3):
             trio.cell(0, c).width = col_widths[c]
             trio.cell(0, c).text = ""
@@ -406,7 +406,7 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            inner_cell_width = 0.70 if grp == "Center" else 0.64
+            inner_cell_width = 0.62 if grp == "Center" else 0.56
             positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
             for c in range(3):
                 for r in range(3):
@@ -456,6 +456,34 @@ def create_document(event_meta, df, layout_mode="Single Row"):
     bio.seek(0)
     return bio
 
+
+def round_table_svg(label, seats, size=220, center_r=58, seat_r=82):
+    import math
+    cx = cy = size / 2
+    seat_positions = []
+    for i, seat in enumerate(seats):
+        angle = -90 + (360 / max(len(seats), 1)) * i
+        rad = math.radians(angle)
+        x = cx + seat_r * math.cos(rad)
+        y = cy + seat_r * math.sin(rad)
+        seat_positions.append((x, y, seat))
+    svg = [f'<svg viewBox="0 0 {size} {size}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">']
+    svg.append(f'<circle cx="{cx}" cy="{cy}" r="{center_r}" fill="#ddd9d1" stroke="#777" stroke-width="1.5"/>')
+    svg.append(f'<text x="{cx}" y="{cy+7}" text-anchor="middle" font-size="26" font-weight="700" fill="#e26b2c">{label}</text>')
+    for x, y, seat in seat_positions:
+        svg.append(f'<circle cx="{x}" cy="{y}" r="18" fill="#f5efd5" stroke="#000" stroke-width="1"/>')
+        svg.append(f'<text x="{x}" y="{y+5}" text-anchor="middle" font-size="12" font-weight="700" fill="#111">{seat}</text>')
+    svg.append('</svg>')
+    return ''.join(svg)
+
+
+def round_table_card_html(grp_name, grp_df):
+    seats = [f"{r.seat_no}<br><span style='font-size:11px'>{r.code}</span>" for r in grp_df.itertuples(index=False)]
+    size = 250 if grp_name == "Center" else 220
+    center_r = 64 if grp_name == "Center" else 56
+    seat_r = 92 if grp_name == "Center" else 80
+    svg = round_table_svg(grp_name[0], [r.seat_no for r in grp_df.itertuples(index=False)], size=size, center_r=center_r, seat_r=seat_r)
+    return f"<div style='display:flex;flex-direction:column;align-items:center;gap:8px'>{svg}</div>"
 
 def sample_text():
     return "Shri Bhupendrabhai Patel | Hon'ble Chief Minister, Government of Gujarat | CM\n" \
@@ -567,31 +595,7 @@ else:
         grp_df = edited[edited["group"] == grp_name].sort_values("group_seat").reset_index(drop=True)
         with table_cols[idx]:
             st.markdown(f"#### {grp_name} Table")
-            st.markdown("<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center;justify-items:center;margin:10px 0;'>", unsafe_allow_html=True)
-            positions = {(0,1):None,(1,2):None,(2,1):None,(1,0):None,(0,2):None,(2,2):None,(2,0):None,(0,0):None}
-            grid = [[None,None,None],[None,None,None],[None,None,None]]
-            pos_list = list(positions.keys())
-            for j, row in grp_df.iterrows():
-                if j >= len(pos_list):
-                    break
-                rr, cc = pos_list[j]
-                grid[rr][cc] = row
-            for rr in range(3):
-                for cc in range(3):
-                    if rr == 1 and cc == 1:
-                        circle_size = 126 if grp_name == "Center" else 108
-                        font_size = 17 if grp_name == "Center" else 15
-                        st.markdown(f"<div style='border:2px solid #b9ab73;background:#efe7cf;border-radius:999px;width:{circle_size}px;height:{circle_size}px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#555;text-align:center;font-size:{font_size}px'>{grp_name}</div>", unsafe_allow_html=True)
-                    elif grid[rr][cc] is not None:
-                        row = grid[rr][cc]
-                        card_width = 100 if grp_name == "Center" else 90
-                        card_height = 76 if grp_name == "Center" else 70
-                        st.markdown(f"<div class='seat-card' style='width:{card_width}px;min-height:{card_height}px'><div style='font-size:20px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:14px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
-                    else:
-                        spacer_width = 100 if grp_name == "Center" else 90
-                        spacer_height = 76 if grp_name == "Center" else 70
-                        st.markdown(f"<div style='width:{spacer_width}px;height:{spacer_height}px'></div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(round_table_card_html(grp_name, grp_df), unsafe_allow_html=True)
     st.markdown("### Current seat order by group")
     order_df = edited.sort_values(["group_order", "group_seat"])[["group", "seat_no", "code", "name"]].reset_index(drop=True)
     st.dataframe(order_df, use_container_width=True, hide_index=True)
