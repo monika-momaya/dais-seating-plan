@@ -157,18 +157,26 @@ def compute_two_row_layout(n, per_row=12):
 
 def compute_three_table_layout(n, center_size=6):
     center_count = min(n, center_size)
-    remaining = list(range(center_count + 1, n + 1))
+    assignment = {}
+    if n <= center_count:
+        center_order = compute_auto_display_order(n)
+        for rank in range(1, n + 1):
+            assignment[rank] = {"table": "Center", "seat": center_order[rank]}
+        return assignment
+
     center_ranks = list(range(1, center_count + 1))
-    center_order = compute_auto_display_order(len(center_ranks))
+    remaining = list(range(center_count + 1, n + 1))
     left_ranks, right_ranks = [], []
     for i, rank in enumerate(remaining):
         if i % 2 == 0:
             right_ranks.append(rank)
         else:
             left_ranks.append(rank)
+
+    center_order = compute_auto_display_order(len(center_ranks))
     left_order = compute_auto_display_order(len(left_ranks))
     right_order = compute_auto_display_order(len(right_ranks))
-    assignment = {}
+
     for rank in center_ranks:
         assignment[rank] = {"table": "Center", "seat": center_order[rank]}
     for i, rank in enumerate(left_ranks, start=1):
@@ -414,7 +422,7 @@ def create_document(event_meta, df, layout_mode="Single Row"):
                     inner.cell(r, c).width = Inches(widths[c])
                     inner.cell(r, c).text = ""
             center = inner.cell(1, 1)
-            center.text = grp.upper() if grp == "Center" else grp
+            center.text = "MAIN" if grp == "Center" else grp
             style_paragraph(center.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
             set_cell_shading(center, "E9E2C7")
             set_cell_border(center, size="8")
