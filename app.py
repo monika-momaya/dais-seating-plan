@@ -310,6 +310,33 @@ def create_document(event_meta, df, layout_mode="Single Row"):
 
     doc.add_paragraph("")
 
+    def write_round_table_block(container_cell, grp_name, grp_df, center_width=2.0, seat_width=0.66):
+        container_cell.text = ""
+        label = container_cell.paragraphs[0]
+        label.text = f"{grp_name} Table"
+        style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
+        inner = container_cell.add_table(rows=3, cols=3)
+        inner.style = "Table Grid"
+        inner.alignment = WD_TABLE_ALIGNMENT.CENTER
+        inner.autofit = False
+        inner.allow_autofit = False
+        for c in range(3):
+            for r in range(3):
+                inner.cell(r, c).width = Inches(seat_width)
+                inner.cell(r, c).text = ""
+        center = inner.cell(1, 1)
+        center.width = Inches(center_width)
+        center.text = grp_name
+        style_paragraph(center.paragraphs[0], bold=True, size=12 if grp_name == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
+        set_cell_shading(center, "E9E2C7")
+        set_cell_border(center, size="8")
+        positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
+        for j, row in grp_df.iterrows():
+            if j >= len(positions):
+                break
+            rr, cc = positions[j]
+            style_seat_cell(inner.cell(rr, cc), row["seat_no"], row["code"])
+
     def style_seat_cell(cell, top_text="", bottom_text=""):
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         cell.text = ""
