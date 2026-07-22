@@ -1,24 +1,35 @@
+from pathlib import Path
+content = '''# app.py
 from __future__ import annotations
 
-from io import BytesIO
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
-import streamlit as st
 from docx import Document
 from docx.enum.section import WD_ORIENTATION
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
+import streamlit as st
 
-st.set_page_config(page_title="Seating Plan Generator", layout="wide")
-st.title("Seating Plan Generator")
-st.caption("Upload CSV with columns: seat_no, code, group")
+APP_TITLE = "Seating Plan Generator"
+DEFAULT_LEFT_5 = [8, 6, 10, 12, 14]
+DEFAULT_CENTER_5 = [2, 1, 3, 4, 5]
+DEFAULT_RIGHT_5 = [9, 7, 11, 13, 15]
+DEFAULT_CENTER_6 = [4, 1, 2, 3, 5, 6]
 
-CENTER_5 = {"top": [2, 1, 3], "bottom": [4, 5]}
-CENTER_6 = {"top": [4, 1, 2, 3], "bottom": [5, 6]}
+CENTER_5 = {
+    "top": [2, 1, 3],
+    "bottom": [4, 5],
+}
+CENTER_6 = {
+    "top": [4, 1, 2, 3],
+    "bottom": [5, 6],
+}
 SIDE_5_LEFT = {"top": [8, 6, 10], "bottom": [12, 14]}
 SIDE_5_RIGHT = {"top": [9, 7, 11], "bottom": [13, 15]}
 
@@ -27,10 +38,10 @@ def set_cell_text(cell, text, bold=False, size=11, align=WD_ALIGN_PARAGRAPH.CENT
     cell.text = ""
     p = cell.paragraphs[0]
     p.alignment = align
-    r = p.add_run(str(text))
-    r.bold = bold
-    r.font.size = Pt(size)
-    r.font.name = "Arial"
+    run = p.add_run(str(text))
+    run.bold = bold
+    run.font.size = Pt(size)
+    run.font.name = "Arial"
     return p
 
 
@@ -75,14 +86,25 @@ def set_cell_border(cell, color="000000", size=8):
         element.set(qn("w:color"), color)
 
 
+def merge_span(table, row_idx, start_col, end_col, text, bold=False, size=11):
+    cell = table.cell(row_idx, start_col)
+    if end_col > start_col:
+        cell = cell.merge(table.cell(row_idx, end_col))
+    set_cell_text(cell, text, bold=bold, size=size)
+    set_cell_shading(cell, "E9E2C7")
+    set_cell_border(cell, size=8)
+    set_cell_margins(cell, 80, 80, 80, 80)
+    return cell
+
+
 def write_seat_cell(cell, seat_no: int, code: str):
     set_cell_text(cell, seat_no, bold=True, size=11)
     p = cell.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = p.add_run(code)
-    r.bold = True
-    r.font.size = Pt(8)
-    r.font.name = "Arial"
+    run = p.add_run(code)
+    run.bold = True
+    run.font.size = Pt(8)
+    run.font.name = "Arial"
     set_cell_shading(cell, "F5EFD6")
     set_cell_border(cell, size=5)
     set_cell_margins(cell, 80, 80, 80, 80)
@@ -107,24 +129,7 @@ def add_title(doc: Document, title: str):
     r.font.name = "Arial"
 
 
-def get_layout_for_group(group_name: str, seat_count: int):
-    if seat_count == 5:
-        if group_name == "Center":
-            return {"n_cols": 3, "top": CENTER_5["top"], "bottom": CENTER_5["bottom"], "label_cols": (1, 1)}
-        if group_name == "Left":
-            return {"n_cols": 3, "top": SIDE_5_LEFT["top"], "bottom": SIDE_5_LEFT["bottom"], "label_cols": (1, 1)}
-        if group_name == "Right":
-            return {"n_cols": 3, "top": SIDE_5_RIGHT["top"], "bottom": SIDE_5_RIGHT["bottom"], "label_cols": (1, 1)}
-    if seat_count == 6:
-        return {"n_cols": 4, "top": CENTER_6["top"], "bottom": CENTER_6["bottom"], "label_cols": (1, 2)}
-    if seat_count == 7:
-        return {"n_cols": 4, "top": [4, 1, 2, 3], "bottom": [5, 6, 7], "label_cols": (1, 2)}
-    if seat_count == 8:
-        return {"n_cols": 4, "top": [4, 1, 2, 3], "bottom": [5, 6, 7, 8], "label_cols": (1, 2)}
-    return {"n_cols": 3, "top": [2, 1, 3], "bottom": [4, 5], "label_cols": (1, 1)}
-
-
-def add_three_table_layout(doc: Document, group_map):
+def add_three_table_layout(doc: Document, group_map: Dict[str, List[Tuple[int, str]]]):
     trio = doc.add_table(rows=1, cols=3)
     trio.alignment = WD_TABLE_ALIGNMENT.CENTER
     trio.autofit = False
@@ -133,48 +138,52 @@ def add_three_table_layout(doc: Document, group_map):
     trio.columns[1].width = Inches(3.3)
     trio.columns[2].width = Inches(3.0)
 
+    templates = {
+        5: {"n_cols": 3, "top": [2, 1, 3], "bottom": [4, 5], "label_cols": (1, 1)},
+        6: {"n_cols": 4, "top": [4, 1, 2, 3], "bottom": [5, 6], "label_cols": (1, 2)},
+        7: {"n_cols": 4, "top": [4, 1, 2, 3], "bottom": [5, 6, 7], "label_cols": (1, 2)},
+        8: {"n_cols": 4, "top": [4, 1, 2, 3], "bottom": [5, 6, 7, 8], "label_cols": (1, 2)},
+    }
+
     for idx, grp in enumerate(["Left", "Center", "Right"]):
         seats = group_map.get(grp, [])
-        lookup = {seat_no: code for seat_no, code in seats}
-        layout = get_layout_for_group(grp, len(seats))
-
+        n = min(len(seats), 8)
+        tmpl = templates.get(n, templates[6])
         cell = trio.cell(0, idx)
         cell.text = ""
+        cell.vertical_alignment = 0
         spacer = cell.paragraphs[0]
         spacer.text = ""
-        spacer.add_run("").font.size = Pt(2 if grp == "Center" else 12)
-
         label = cell.add_paragraph()
         label.alignment = WD_ALIGN_PARAGRAPH.CENTER
         rr = label.add_run(f"{grp} Table")
         rr.bold = True
         rr.font.size = Pt(10)
         rr.font.name = "Arial"
+        rr.font.color.rgb = None
 
-        inner = cell.add_table(rows=2, cols=layout["n_cols"])
-        inner.alignment = WD_TABLE_ALIGNMENT.CENTER
-        inner.autofit = False
-        inner.allow_autofit = False
-
-        widths = [0.82] * layout["n_cols"]
-        widths[layout["n_cols"] // 2] = 1.05 if grp == "Center" else 0.9
-        for c in range(layout["n_cols"]):
+        table = cell.add_table(rows=2, cols=tmpl["n_cols"])
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        table.allow_autofit = False
+        widths = [0.82] * tmpl["n_cols"]
+        widths[tmpl["n_cols"] // 2] = 1.05 if grp == "Center" else 0.9
+        for c in range(tmpl["n_cols"]):
             for r in range(2):
-                inner.cell(r, c).width = Inches(widths[c])
-                inner.cell(r, c).text = ""
-                set_cell_border(inner.cell(r, c), size=5)
+                table.cell(r, c).width = Inches(widths[c])
+                table.cell(r, c).text = ""
+                set_cell_border(table.cell(r, c), size=5)
 
-        for seat_no, col in zip(layout["top"], range(len(layout["top"]))):
-            write_seat_cell(inner.cell(0, col), seat_no, lookup.get(seat_no, ""))
+        lookup = {seat_no: code for seat_no, code in seats}
+        for seat_no, col in zip(tmpl["top"], range(len(tmpl["top"]))):
+            write_seat_cell(table.cell(0, col), seat_no, lookup.get(seat_no, ""))
+        for seat_no, col in zip(tmpl["bottom"], [0, tmpl["n_cols"] - 1]):
+            write_seat_cell(table.cell(1, col), seat_no, lookup.get(seat_no, ""))
 
-        bottom_cols = [0, layout["n_cols"] - 1]
-        for seat_no, col in zip(layout["bottom"], bottom_cols):
-            write_seat_cell(inner.cell(1, col), seat_no, lookup.get(seat_no, ""))
-
-        a, b = layout["label_cols"]
-        label_cell = inner.cell(1, a)
+        a, b = tmpl["label_cols"]
+        label_cell = table.cell(1, a)
         if a != b:
-            label_cell = label_cell.merge(inner.cell(1, b))
+            label_cell = label_cell.merge(table.cell(1, b))
         set_cell_text(label_cell, "MAIN" if grp == "Center" else grp, bold=True, size=12 if grp == "Center" else 11)
         set_cell_shading(label_cell, "E9E2C7")
         set_cell_border(label_cell, size=8)
@@ -194,29 +203,30 @@ def build_doc(df: pd.DataFrame) -> Document:
     return doc
 
 
-def make_download_docx(df: pd.DataFrame) -> bytes:
-    doc = build_doc(df)
-    bio = BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio.getvalue()
+def main():
+    st.set_page_config(page_title=APP_TITLE, layout="wide")
+    st.title(APP_TITLE)
+    st.caption("Upload CSV with columns: seat_no, code, group")
+    uploaded = st.file_uploader("CSV", type=["csv"])
+    if uploaded:
+        df = pd.read_csv(uploaded)
+        if not {"seat_no", "code", "group"}.issubset(df.columns):
+            st.error("CSV must contain seat_no, code, group")
+            return
+        doc = build_doc(df)
+        out = Path("output")
+        out.mkdir(exist_ok=True)
+        path = out / "app_generated.docx"
+        doc.save(path)
+        st.success(f"Saved {path}")
+        with open(path, "rb") as f:
+            st.download_button("Download DOCX", f, file_name="app_generated.docx")
+    else:
+        st.info("Upload CSV to generate the Word file.")
 
 
-uploaded = st.file_uploader("CSV file", type=["csv"])
-if uploaded is not None:
-    df = pd.read_csv(uploaded)
-    required = {"seat_no", "code", "group"}
-    if not required.issubset(df.columns):
-        st.error("CSV must contain columns: seat_no, code, group")
-        st.stop()
-
-    docx_bytes = make_download_docx(df)
-    st.success("Word file generated.")
-    st.download_button(
-        "Download Word file",
-        data=docx_bytes,
-        file_name="seating_plan.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
-else:
-    st.info("Upload a CSV file to generate the Word seating plan.")
+if __name__ == "__main__":
+    main()
+'''
+Path('output/app.py').write_text(content)
+print('full app.py written')
