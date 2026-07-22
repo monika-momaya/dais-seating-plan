@@ -173,6 +173,29 @@ def compute_three_table_layout(n, center_size=6):
         }
         return exact
 
+    if n == 18 and center_size == 6:
+        exact = {
+            11: {"table": "Left", "seat": 1},
+            7: {"table": "Left", "seat": 2},
+            9: {"table": "Left", "seat": 3},
+            13: {"table": "Left", "seat": 4},
+            15: {"table": "Left", "seat": 5},
+            17: {"table": "Left", "seat": 6},
+            4: {"table": "Center", "seat": 1},
+            1: {"table": "Center", "seat": 2},
+            2: {"table": "Center", "seat": 3},
+            3: {"table": "Center", "seat": 4},
+            5: {"table": "Center", "seat": 5},
+            6: {"table": "Center", "seat": 6},
+            12: {"table": "Right", "seat": 1},
+            8: {"table": "Right", "seat": 2},
+            10: {"table": "Right", "seat": 3},
+            14: {"table": "Right", "seat": 4},
+            16: {"table": "Right", "seat": 5},
+            18: {"table": "Right", "seat": 6},
+        }
+        return exact
+
     center_count = min(n, center_size)
     if n <= center_count:
         center_order = compute_auto_display_order(n)
@@ -380,10 +403,15 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         trio.columns[1].width = Inches(3.3)
         trio.columns[2].width = Inches(3.0)
 
-        group_templates = {
+        group_templates_5 = {
             "Left": {"n_cols": 3, "top": [8, 6, 10], "bottom": [12, 14], "label_cols": (1, 1), "label": "Left"},
             "Center": {"n_cols": 3, "top": [2, 1, 3], "bottom": [4, 5], "label_cols": (1, 1), "label": "MAIN"},
             "Right": {"n_cols": 3, "top": [9, 7, 11], "bottom": [13, 15], "label_cols": (1, 1), "label": "Right"},
+        }
+        group_templates_6 = {
+            "Left": {"n_cols": 4, "top": [11, 7, 9, 13], "bottom": [15, 17], "label_cols": (1, 2), "label": "A"},
+            "Center": {"n_cols": 4, "top": [4, 1, 2, 3], "bottom": [5, 6], "label_cols": (1, 2), "label": "MAIN"},
+            "Right": {"n_cols": 4, "top": [12, 8, 10, 14], "bottom": [16, 18], "label_cols": (1, 2), "label": "B"},
         }
 
         def write_cell(cell, seat):
@@ -407,7 +435,11 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         for idx, grp in enumerate(display_groups):
             grp_df = df[df["group"] == grp].sort_values("group_seat")
             lookup = code_lookup(grp_df.itertuples(index=False))
-            tmpl = group_templates[grp]
+            n_seats = len(grp_df)
+            if n_seats <= 5:
+                tmpl = group_templates_5[grp]
+            else:
+                tmpl = group_templates_6[grp]
 
             cell = trio.cell(0, idx)
             cell.text = ""
@@ -431,9 +463,11 @@ def create_document(event_meta, df, layout_mode="Single Row"):
                     inner.cell(r, c).width = Inches(widths[c])
                     inner.cell(r, c).text = ""
 
-            for seat_no, col in zip(tmpl["top"], [0, 1, 2]):
+            top_cols = list(range(len(tmpl["top"])))
+            bottom_cols = [0, tmpl["n_cols"] - 1]
+            for seat_no, col in zip(tmpl["top"], top_cols):
                 write_cell(inner.cell(0, col), (seat_no, lookup.get(seat_no, "")))
-            for seat_no, col in zip(tmpl["bottom"], [0, 2]):
+            for seat_no, col in zip(tmpl["bottom"], bottom_cols):
                 write_cell(inner.cell(1, col), (seat_no, lookup.get(seat_no, "")))
 
             a, b = tmpl["label_cols"]
@@ -502,15 +536,18 @@ def round_table_svg(label, seats, size=220, center_r=58, seat_r=82):
 
 def round_table_card_html(grp_name, grp_df):
     grp_df = grp_df.sort_values("group_seat").reset_index(drop=True)
+    n = len(grp_df)
 
-    if grp_name == "Left" and len(grp_df) == 5:
-        order = [8, 6, 10, 12, 14]
-    elif grp_name == "Center" and len(grp_df) == 5:
-        order = [2, 1, 3, 4, 5]
-    elif grp_name == "Right" and len(grp_df) == 5:
-        order = [9, 7, 11, 13, 15]
-    else:
-        order = [int(r.seat_no) for r in grp_df.itertuples(index=False)]
+    fixed_orders = {
+        ("Left", 5): [8, 6, 10, 12, 14],
+        ("Center", 5): [2, 1, 3, 4, 5],
+        ("Right", 5): [9, 7, 11, 13, 15],
+        ("Left", 6): [11, 7, 9, 13, 15, 17],
+        ("Center", 6): [4, 1, 2, 3, 5, 6],
+        ("Right", 6): [12, 8, 10, 14, 16, 18],
+    }
+
+    order = fixed_orders.get((grp_name, n), [int(r.seat_no) for r in grp_df.itertuples(index=False)])
 
     size = 250 if grp_name == "Center" else 220
     center_r = 64 if grp_name == "Center" else 56
