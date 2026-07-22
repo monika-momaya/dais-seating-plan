@@ -118,11 +118,6 @@ def save_current_history(title, subtitle, time_text, df):
 
 
 def compute_auto_display_order(n):
-    """Return mapping protocol_rank -> display_order (1..n, left to right).
-    Rank 1 sits right-middle, rank 2 sits left-middle, then alternate outward:
-    odd ranks (3,5,7,...) extend the right side, even ranks (4,6,8,...) extend the left side.
-    For odd n, rank 1 ends up as the exact center seat.
-    """
     left = []
     right = []
     for k in range(1, n + 1):
@@ -156,19 +151,48 @@ def compute_two_row_layout(n, per_row=12):
 
 
 def compute_three_table_layout(n, center_size=6):
+    assignment = {}
+
+    if n == 15 and center_size == 5:
+        exact = {
+            8: {"table": "Left", "seat": 1},
+            6: {"table": "Left", "seat": 2},
+            10: {"table": "Left", "seat": 3},
+            12: {"table": "Left", "seat": 4},
+            14: {"table": "Left", "seat": 5},
+            2: {"table": "Center", "seat": 1},
+            1: {"table": "Center", "seat": 2},
+            3: {"table": "Center", "seat": 3},
+            4: {"table": "Center", "seat": 4},
+            5: {"table": "Center", "seat": 5},
+            9: {"table": "Right", "seat": 1},
+            7: {"table": "Right", "seat": 2},
+            11: {"table": "Right", "seat": 3},
+            13: {"table": "Right", "seat": 4},
+            15: {"table": "Right", "seat": 5},
+        }
+        return exact
+
     center_count = min(n, center_size)
-    remaining = list(range(center_count + 1, n + 1))
+    if n <= center_count:
+        center_order = compute_auto_display_order(n)
+        for rank in range(1, n + 1):
+            assignment[rank] = {"table": "Center", "seat": center_order[rank]}
+        return assignment
+
     center_ranks = list(range(1, center_count + 1))
-    center_order = compute_auto_display_order(len(center_ranks))
+    remaining = list(range(center_count + 1, n + 1))
     left_ranks, right_ranks = [], []
     for i, rank in enumerate(remaining):
         if i % 2 == 0:
             right_ranks.append(rank)
         else:
             left_ranks.append(rank)
+
+    center_order = compute_auto_display_order(len(center_ranks))
     left_order = compute_auto_display_order(len(left_ranks))
     right_order = compute_auto_display_order(len(right_ranks))
-    assignment = {}
+
     for rank in center_ranks:
         assignment[rank] = {"table": "Center", "seat": center_order[rank]}
     for i, rank in enumerate(left_ranks, start=1):
@@ -335,44 +359,6 @@ def create_document(event_meta, df, layout_mode="Single Row"):
             seat_table.cell(1, i).text = ""
             set_cell_border(seat_table.cell(1, i), size="0")
 
-    def render_round_table_block(title_text, grp_df):
-        grp_df = grp_df.sort_values("group_seat").reset_index(drop=True)
-        label_p = doc.add_paragraph(title_text)
-        style_paragraph(label_p, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-        outer = doc.add_table(rows=3, cols=3)
-        outer.alignment = WD_TABLE_ALIGNMENT.CENTER
-        outer.autofit = False
-        widths = [3.2, 4.1, 3.2]
-        for c in range(3):
-            for r in range(3):
-                outer.cell(r, c).width = Inches(widths[c])
-                set_cell_margins(outer.cell(r, c), 40, 40, 40, 40)
-        for r in range(3):
-            for c in range(3):
-                outer.cell(r, c).text = ""
-        center = outer.cell(1, 1)
-        center.text = ""
-        p1 = center.paragraphs[0]
-        p1.text = title_text.replace(" Table", "")
-        style_paragraph(p1, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
-        p2 = center.add_paragraph(f"{len(grp_df)} Dignitaries")
-        style_paragraph(p2, size=9, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-        set_cell_shading(center, "E9E2C7")
-        set_cell_border(center, size="10")
-
-        positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
-        extra_rows = []
-        for i, row in grp_df.iterrows():
-            if i < len(positions):
-                rr, cc = positions[i]
-                style_seat_cell(outer.cell(rr, cc), row["seat_no"], row["code"])
-            else:
-                extra_rows.append(row)
-        if extra_rows:
-            extra_label = doc.add_paragraph("Additional seats")
-            style_paragraph(extra_label, bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-            render_seat_row(pd.DataFrame(extra_rows))
-
     if layout_mode == "Single Row":
         render_seat_row(df.sort_values("display_order"))
     elif layout_mode == "Two Rows":
@@ -390,38 +376,75 @@ def create_document(event_meta, df, layout_mode="Single Row"):
         trio.alignment = WD_TABLE_ALIGNMENT.CENTER
         trio.autofit = False
         trio.allow_autofit = False
-        col_widths = [Inches(2.2), Inches(2.6), Inches(2.2)]
-        for c in range(3):
-            trio.cell(0, c).width = col_widths[c]
-            trio.cell(0, c).text = ""
+        trio.columns[0].width = Inches(3.0)
+        trio.columns[1].width = Inches(3.3)
+        trio.columns[2].width = Inches(3.0)
+
+        group_templates = {
+            "Left": {"n_cols": 3, "top": [8, 6, 10], "bottom": [12, 14], "label_cols": (1, 1), "label": "Left"},
+            "Center": {"n_cols": 3, "top": [2, 1, 3], "bottom": [4, 5], "label_cols": (1, 1), "label": "MAIN"},
+            "Right": {"n_cols": 3, "top": [9, 7, 11], "bottom": [13, 15], "label_cols": (1, 1), "label": "Right"},
+        }
+
+        def write_cell(cell, seat):
+            if seat is None:
+                cell.text = ""
+                return
+            seat_no, code = seat
+            cell.text = ""
+            p1 = cell.paragraphs[0]
+            p1.text = str(seat_no)
+            style_paragraph(p1, bold=True, size=11, align=WD_ALIGN_PARAGRAPH.CENTER)
+            p2 = cell.add_paragraph(code)
+            style_paragraph(p2, bold=True, size=8, align=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_shading(cell, "F5EFD6")
+            set_cell_border(cell, size="5")
+            set_cell_margins(cell, 10, 10, 10, 10)
+
+        def code_lookup(rows):
+            return {int(r.seat_no): r.code for r in rows}
+
         for idx, grp in enumerate(display_groups):
-            grp_df = df[df["group"] == grp].sort_values("group_seat").reset_index(drop=True)
+            grp_df = df[df["group"] == grp].sort_values("group_seat")
+            lookup = code_lookup(grp_df.itertuples(index=False))
+            tmpl = group_templates[grp]
+
             cell = trio.cell(0, idx)
             cell.text = ""
-            label = cell.paragraphs[0]
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            spacer = cell.paragraphs[0]
+            spacer.text = ""
+            style_paragraph(spacer, size=2 if grp == "Center" else 12)
+            label = cell.add_paragraph()
             label.text = f"{grp} Table"
             style_paragraph(label, bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color="666666")
-            inner = cell.add_table(rows=3, cols=3)
+
+            inner = cell.add_table(rows=2, cols=tmpl["n_cols"])
             inner.style = "Table Grid"
             inner.alignment = WD_TABLE_ALIGNMENT.CENTER
             inner.autofit = False
             inner.allow_autofit = False
-            inner_cell_width = 0.70 if grp == "Center" else 0.64
-            positions = [(0,1), (1,2), (2,1), (1,0), (0,2), (2,2), (2,0), (0,0)]
-            for c in range(3):
-                for r in range(3):
-                    inner.cell(r, c).width = Inches(inner_cell_width)
+            widths = [0.82] * tmpl["n_cols"]
+            widths[tmpl["n_cols"] // 2] = 1.05 if grp == "Center" else 0.9
+            for c in range(tmpl["n_cols"]):
+                for r in range(2):
+                    inner.cell(r, c).width = Inches(widths[c])
                     inner.cell(r, c).text = ""
-            center = inner.cell(1, 1)
-            center.text = grp
-            style_paragraph(center.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
-            set_cell_shading(center, "E9E2C7")
-            set_cell_border(center, size="8")
-            for j, row in grp_df.iterrows():
-                if j >= len(positions):
-                    break
-                rr, cc = positions[j]
-                style_seat_cell(inner.cell(rr, cc), row["seat_no"], row["code"])
+
+            for seat_no, col in zip(tmpl["top"], [0, 1, 2]):
+                write_cell(inner.cell(0, col), (seat_no, lookup.get(seat_no, "")))
+            for seat_no, col in zip(tmpl["bottom"], [0, 2]):
+                write_cell(inner.cell(1, col), (seat_no, lookup.get(seat_no, "")))
+
+            a, b = tmpl["label_cols"]
+            label_cell = inner.cell(1, a)
+            if a != b:
+                label_cell = label_cell.merge(inner.cell(1, b))
+            label_cell.text = tmpl["label"]
+            style_paragraph(label_cell.paragraphs[0], bold=True, size=12 if grp == "Center" else 11, align=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_shading(label_cell, "E9E2C7")
+            set_cell_border(label_cell, size="8")
+            set_cell_margins(label_cell, 10, 10, 10, 10)
 
     doc.add_paragraph("")
     detail_table = doc.add_table(rows=1, cols=3)
@@ -455,6 +478,45 @@ def create_document(event_meta, df, layout_mode="Single Row"):
     doc.save(bio)
     bio.seek(0)
     return bio
+
+
+def round_table_svg(label, seats, size=220, center_r=58, seat_r=82):
+    import math
+    cx = cy = size / 2
+    seat_positions = []
+    for i, seat in enumerate(seats):
+        angle = -90 + (360 / max(len(seats), 1)) * i
+        rad = math.radians(angle)
+        x = cx + seat_r * math.cos(rad)
+        y = cy + seat_r * math.sin(rad)
+        seat_positions.append((x, y, seat))
+    svg = [f'<svg viewBox="0 0 {size} {size}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">']
+    svg.append(f'<circle cx="{cx}" cy="{cy}" r="{center_r}" fill="#ddd9d1" stroke="#777" stroke-width="1.5"/>')
+    svg.append(f'<text x="{cx}" y="{cy+7}" text-anchor="middle" font-size="26" font-weight="700" fill="#e26b2c">{label}</text>')
+    for x, y, seat in seat_positions:
+        svg.append(f'<circle cx="{x}" cy="{y}" r="18" fill="#f5efd5" stroke="#000" stroke-width="1"/>')
+        svg.append(f'<text x="{x}" y="{y+5}" text-anchor="middle" font-size="12" font-weight="700" fill="#111">{seat}</text>')
+    svg.append('</svg>')
+    return ''.join(svg)
+
+
+def round_table_card_html(grp_name, grp_df):
+    grp_df = grp_df.sort_values("group_seat").reset_index(drop=True)
+
+    if grp_name == "Left" and len(grp_df) == 5:
+        order = [8, 6, 10, 12, 14]
+    elif grp_name == "Center" and len(grp_df) == 5:
+        order = [2, 1, 3, 4, 5]
+    elif grp_name == "Right" and len(grp_df) == 5:
+        order = [9, 7, 11, 13, 15]
+    else:
+        order = [int(r.seat_no) for r in grp_df.itertuples(index=False)]
+
+    size = 250 if grp_name == "Center" else 220
+    center_r = 64 if grp_name == "Center" else 56
+    seat_r = 92 if grp_name == "Center" else 80
+    svg = round_table_svg(grp_name[0], order, size=size, center_r=center_r, seat_r=seat_r)
+    return f"<div style='display:flex;flex-direction:column;align-items:center;gap:8px'>{svg}</div>"
 
 
 def sample_text():
@@ -507,7 +569,8 @@ center_size = 6
 if layout_mode == "Two Rows":
     per_row = st.number_input("Max seats in front row", min_value=2, max_value=40, value=12, step=1)
 elif layout_mode == "Three Round Tables":
-    center_size = st.number_input("Number of dignitaries at Center table", min_value=1, max_value=len(edited), value=min(6, len(edited)), step=1)
+    default_center = 5 if len(edited) == 15 else min(6, len(edited))
+    center_size = st.number_input("Number of dignitaries at Center table", min_value=1, max_value=len(edited), value=default_center, step=1)
 
 edited = apply_layout(edited, layout_mode, per_row=per_row, center_size=center_size)
 
@@ -567,31 +630,7 @@ else:
         grp_df = edited[edited["group"] == grp_name].sort_values("group_seat").reset_index(drop=True)
         with table_cols[idx]:
             st.markdown(f"#### {grp_name} Table")
-            st.markdown("<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center;justify-items:center;margin:10px 0;'>", unsafe_allow_html=True)
-            positions = {(0,1):None,(1,2):None,(2,1):None,(1,0):None,(0,2):None,(2,2):None,(2,0):None,(0,0):None}
-            grid = [[None,None,None],[None,None,None],[None,None,None]]
-            pos_list = list(positions.keys())
-            for j, row in grp_df.iterrows():
-                if j >= len(pos_list):
-                    break
-                rr, cc = pos_list[j]
-                grid[rr][cc] = row
-            for rr in range(3):
-                for cc in range(3):
-                    if rr == 1 and cc == 1:
-                        circle_size = 126 if grp_name == "Center" else 108
-                        font_size = 17 if grp_name == "Center" else 15
-                        st.markdown(f"<div style='border:2px solid #b9ab73;background:#efe7cf;border-radius:999px;width:{circle_size}px;height:{circle_size}px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#555;text-align:center;font-size:{font_size}px'>{grp_name}</div>", unsafe_allow_html=True)
-                    elif grid[rr][cc] is not None:
-                        row = grid[rr][cc]
-                        card_width = 100 if grp_name == "Center" else 90
-                        card_height = 76 if grp_name == "Center" else 70
-                        st.markdown(f"<div class='seat-card' style='width:{card_width}px;min-height:{card_height}px'><div style='font-size:20px;font-weight:800;color:#666;line-height:1'>{row['seat_no']}</div><div style='font-size:14px;color:#666;margin-top:6px;font-weight:600'>{row['code']}</div></div>", unsafe_allow_html=True)
-                    else:
-                        spacer_width = 100 if grp_name == "Center" else 90
-                        spacer_height = 76 if grp_name == "Center" else 70
-                        st.markdown(f"<div style='width:{spacer_width}px;height:{spacer_height}px'></div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(round_table_card_html(grp_name, grp_df), unsafe_allow_html=True)
     st.markdown("### Current seat order by group")
     order_df = edited.sort_values(["group_order", "group_seat"])[["group", "seat_no", "code", "name"]].reset_index(drop=True)
     st.dataframe(order_df, use_container_width=True, hide_index=True)
